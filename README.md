@@ -1,120 +1,65 @@
-# 🌿 GEOSISTE v8 — Agent Commercial IA + CRM CBD Europe
+# 🌿 GEOSISTE v9 — Agent Commercial IA + CRM CBD Europe
 
-> **L'Entrepôt du Chanvrier** • lentrepotduchanvrier.com  
-> CRM complet + Agent IA Claude + Supabase + Déploiement Vercel
+> **L'Entrepôt du Chanvrier** • lentrepotduchanvrier.com
+> 13 modules • Multi-utilisateur • Notifications Push
 
 ---
 
-## 🚀 Déploiement en 5 étapes
+## 🚀 Nouvelles fonctions v9
 
-### 1. Supabase (base de données — gratuit)
+| # | Fonction | Module |
+|---|----------|--------|
+| 1 | **Connexion multi-email** | Config → Comptes Email |
+| 2 | **Choix compte Instagram** | Config → Comptes Instagram |
+| 3 | **Newsletter IA** avec sélection produits | 📰 Newsletter |
+| 4 | **Templates messages** (8 inclus, FR/EN/DE) | 📝 Templates |
+| 5 | **Historique envois** par prospect | 📨 Envois |
+| 6 | **Relances auto** avec rappels | 🔔 Relances |
+| 7 | **Tableau CA** graphique SVG | 📊 CA |
+| 8 | **Fiches produits** PDF/TXT | 🏷️ Produits |
+| 9 | **Notes vocales** par prospect | 🤖 Agent → 🎙️ |
+| 10 | **Tags personnalisés** + filtres | 📋 CRM |
+| 11 | **Pappers avancé** (NAF, dept, CA, effectifs) | 🔍 Pappers |
+| 12 | **Multi-utilisateur** login | ⚙️ Config |
+| 13 | **Notifications push** | 🔔 Header |
 
-1. Va sur [supabase.com](https://supabase.com) → **New Project** → Nom: `geosiste`
-2. Va dans **SQL Editor** et colle ce script :
+---
 
-```sql
-CREATE TABLE prospects (
-  id BIGINT PRIMARY KEY,
-  nm TEXT NOT NULL DEFAULT '',
-  co TEXT DEFAULT 'France', ct TEXT DEFAULT '', tp TEXT DEFAULT '',
-  web TEXT DEFAULT '', em TEXT DEFAULT '', ph TEXT DEFAULT '',
-  wa TEXT DEFAULT '', ig TEXT DEFAULT '', li TEXT DEFAULT '',
-  sz TEXT DEFAULT 'Moyen', ca TEXT DEFAULT 'N/A',
-  pr JSONB DEFAULT '[]', st TEXT DEFAULT 'prospect',
-  sc INTEGER DEFAULT 60, ml BOOLEAN DEFAULT FALSE,
-  sg TEXT DEFAULT 'grossiste_cbd',
-  ints JSONB DEFAULT '[]', pi JSONB DEFAULT '{}',
-  last TEXT, nt TEXT DEFAULT '',
-  seq INTEGER, seq_step INTEGER DEFAULT 0,
-  orders JSONB DEFAULT '[]', revenue NUMERIC DEFAULT 0
-);
+## 📦 Déploiement
 
-CREATE TABLE config (
-  key TEXT PRIMARY KEY,
-  value JSONB
-);
+### 1. Supabase
+1. Créer projet sur supabase.com
+2. SQL Editor → coller `supabase-schema.sql` → Run
+3. Copier URL + clé anon
 
-ALTER TABLE prospects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE config ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "anon_all" ON prospects FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "anon_cfg" ON config FOR ALL USING (true) WITH CHECK (true);
-```
+### 2. Configurer
+Ouvrir `src/App.js` lignes 12-13 → coller URL et clé Supabase
 
-3. Va dans **Settings > API** et copie :
-   - **Project URL** : `https://xxxx.supabase.co`
-   - **anon public key** : `eyJhbGci...`
-
-4. Ouvre `src/App.js` et remplace les lignes 11-12 :
-```js
-const SUPABASE_URL = "https://xxxx.supabase.co";  // ← ta URL
-const SUPABASE_KEY = "eyJhbGci...";                // ← ta clé anon
-```
-
-### 2. Clé API Claude
-
-1. Va sur [console.anthropic.com](https://console.anthropic.com/settings/keys)
-2. Crée une clé API
-3. Tu l'ajouteras dans Vercel à l'étape 4
-
-### 3. Vercel (hébergement — gratuit)
-
+### 3. Vercel
 ```bash
-# Installe Vercel CLI
-npm install -g vercel
-
-# Clone ce dossier sur ton PC puis :
-cd geosiste-vercel
+cd geosiste-v9
 npm install
 vercel deploy
 ```
 
-### 4. Variables d'environnement Vercel
+### 4. Variable d'environnement
+Dashboard Vercel → Settings → Environment Variables :
+- `ANTHROPIC_API_KEY` = `sk-ant-api03-xxxxx`
 
-Dans le dashboard Vercel → **Settings > Environment Variables** :
+Redéployer : `vercel deploy --prod`
 
-| Nom | Valeur |
-|-----|--------|
-| `ANTHROPIC_API_KEY` | `sk-ant-api03-xxxxx` |
-
-Puis **redéploie** : `vercel deploy --prod`
-
-### 5. C'est en ligne ! 🎉
-
-Ton app est accessible sur `https://geosiste-xxx.vercel.app`
+### 5. Connexion
+Login par défaut : `admin@geosiste.com` / `geosiste2024`
 
 ---
-
-## 📁 Structure du projet
-
-```
-geosiste-vercel/
-├── api/
-│   └── claude.js          ← Proxy sécurisé API Claude (serverless)
-├── public/
-│   └── index.html          ← HTML de base
-├── src/
-│   ├── App.js              ← Application React complète (867 lignes)
-│   └── index.js            ← Point d'entrée React
-├── .env.example            ← Template variables d'environnement
-├── .gitignore
-├── package.json
-├── vercel.json             ← Config Vercel
-└── README.md
-```
-
-## 🔐 Sécurité
-
-- La **clé API Claude** est côté serveur uniquement (via `/api/claude.js`)
-- La **clé Supabase anon** est publique (c'est normal — les policies RLS protègent)
-- Aucune donnée sensible n'est exposée côté client
 
 ## 💰 Coûts
 
 | Service | Gratuit | Payant |
 |---------|---------|--------|
-| Supabase | 500 MB, 50k lignes | 25$/mois (Pro) |
-| Vercel | 100 GB bande passante | 20$/mois (Pro) |
-| Claude API | — | ~0.003€/message |
-| Pappers | 100 req/mois | 39€/mois (Pro) |
+| Supabase | 500 MB | 25$/mois (Pro) |
+| Vercel | 100 GB | 20$/mois (Pro) |
+| Claude API | — | ~0.003€/msg |
+| Pappers | 100 req/mois | 39€/mois |
 
-**Total démarrage : 0€** (sauf Claude API pay-as-you-go)
+**Total démarrage : 0€** (hors API Claude)

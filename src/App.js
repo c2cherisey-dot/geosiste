@@ -1,867 +1,711 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
-// ══════════════════════════════════════════════════════════════════════
-// GEOSISTE v8 — PRODUCTION READY + SUPABASE
-// L'Entrepôt du Chanvrier • Geosiste • lentrepotduchanvrier.com
-// ══════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// GEOSISTE v10 — AGENT COMMERCIAL IA + CRM CBD
+// L'Entrepôt du Chanvrier · lentrepotduchanvrier.com
+// ══════════════════════════════════════════════════════════════
 
-// ── SUPABASE CONFIG ─────────────────────────────────────────────────
-// 🔧 REMPLACE CES 2 VALEURS par celles de ton projet Supabase :
-const SUPABASE_URL = "https://doompuvsmjmfqnbwclwf.supabase.co";
-const SUPABASE_KEY = "sb_publishable_Uvb_TCy3yXv8BaHCitZNjA_k3A4KXDs";
+const SUPA_URL = "https://VOTRE_URL.supabase.co";
+const SUPA_KEY = "VOTRE_CLE_ANON";
 
-// Mini client Supabase (pas besoin d'installer @supabase/supabase-js)
-const supa = {
-  headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
-  async load(table) {
-    try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*&order=id.asc`, { headers: this.headers });
-      if (!r.ok) return null;
-      return await r.json();
-    } catch { return null; }
-  },
-  async upsert(table, rows) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-        method: "POST", headers: { ...this.headers, "Prefer": "resolution=merge-duplicates,return=representation" },
-        body: JSON.stringify(Array.isArray(rows) ? rows : [rows])
-      });
-    } catch (e) { console.error("Supabase upsert:", e); }
-  },
-  async del(table, id) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, { method: "DELETE", headers: this.headers });
-    } catch (e) { console.error("Supabase delete:", e); }
-  },
-  async saveConfig(key, value) {
-    await this.upsert("config", { key, value: JSON.stringify(value) });
-  },
-  async loadConfig(key) {
-    try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/config?key=eq.${key}&select=value`, { headers: this.headers });
-      if (!r.ok) return null;
-      const d = await r.json();
-      return d[0] ? JSON.parse(d[0].value) : null;
-    } catch { return null; }
-  }
-};
-const SUPA_READY = !SUPABASE_URL.includes("XXXXXXX");
+// ─── SYSTEM PROMPT ───────────────────────────────────────────
+const SYS = `Tu es l'agent commercial IA expert de L'Entrepôt du Chanvrier (Geosiste), grossiste et fabricant français de CBD et cannabinoïdes innovants.
 
-// ── CATALOGUE ────────────────────────────────────────────────────────
-const CAT=[
-  {r:"H001",n:"3X Filtré Hash",c:"Hash",m:"CBG",d:"40% CBG+9% CBD",p:.95,v:["CBD","MCP-N"]},
-  {r:"H002",n:"Beldia Hash CSA",c:"Hash",m:"CSA",d:"10% CSA",p:1.25,v:["CSA"]},
-  {r:"H003",n:"Black Panther",c:"Hash",m:"CBN",d:"35% CBD+20% CBN",p:.95,v:["CBD+CBN"]},
-  {r:"H004",n:"Bubble Hash 10-OH",c:"Hash",m:"10-OH",d:"15% 10-OH-HHC+10% CBN",p:2,v:["10-OH"]},
-  {r:"H005",n:"Charas CBD",c:"Hash",m:"CBD",d:"30% CBD",p:.55,v:["CBD"]},
-  {r:"H006",n:"Double Zero",c:"Hash",m:"CBD",d:"50% CBD",p:.85,v:["CBD"]},
-  {r:"H007",n:"Drive 0%THC",c:"Hash",m:"CBD",d:"65% CBD, 0% THC",p:.85,v:["0%THC"]},
-  {r:"H008",n:"Dry Ice",c:"Hash",m:"CBD",d:"42% CBD",p:.85,v:["CBD"]},
-  {r:"H009",n:"Ice O Lator CSA",c:"Hash",m:"CSA",d:"20% CSA Premium",p:2,v:["CSA"]},
-  {r:"H010",n:"Ketama Gold",c:"Hash",m:"CBD",d:"40% CBD",p:.55,v:["CBD"]},
-  {r:"H011",n:"La Mousse CSA",c:"Hash",m:"CSA",d:"10% CSA",p:1.5,v:["CSA"]},
-  {r:"H012",n:"Nepal MCP-N",c:"Hash",m:"MCP-N",d:"MCP-N relaxation",p:1.5,v:["MCP-N"]},
-  {r:"H013",n:"Pollen CBD",c:"Hash",m:"CBD",d:"CBD classique",p:.55,v:["CBD"]},
-  {r:"F001",n:"Amnésia Haze",c:"Fleurs",m:"Multi",d:"Hydro",p:1.6,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F002",n:"Blueberry",c:"Fleurs",m:"Multi",d:"Hydro",p:1.6,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F003",n:"Gorilla Glue",c:"Fleurs",m:"Multi",d:"Hydro",p:1.6,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F004",n:"Green Gelato",c:"Fleurs",m:"Multi",d:"Indoor",p:.85,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F005",n:"Lemon Diesel",c:"Fleurs",m:"Multi",d:"Indoor",p:.85,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F006",n:"OG Kush",c:"Fleurs",m:"Multi",d:"Hydro",p:1.6,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F007",n:"Papaya",c:"Fleurs",m:"Multi",d:"Indoor",p:.85,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F008",n:"Plutonium OG",c:"Fleurs",m:"Multi",d:"Hydro",p:1.6,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F009",n:"Purple Haze",c:"Fleurs",m:"Multi",d:"Indoor",p:1.4,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F010",n:"Strawberry",c:"Fleurs",m:"Multi",d:"Greenhouse",p:.6,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F011",n:"Tropical Kush",c:"Fleurs",m:"Multi",d:"Indoor",p:.85,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"F012",n:"White Widow",c:"Fleurs",m:"Multi",d:"Hydro",p:1.7,v:["CBD","MCP-N","10-OH","CSA"]},
-  {r:"T001",n:"Mini Buds",c:"Trim",m:"CBD",d:"Petites fleurs",p:.4,v:["CBD"]},
-  {r:"T002",n:"Trim",c:"Trim",m:"CBD",d:"Pour transformation",p:.1,v:["CBD"]},
-  {r:"V001",n:"Grenade Vape 10-OH",c:"Vape",m:"10-OH",d:"80% 10-OH Puff 0.5ml",p:3.9,v:["Atomic Kush","Atomic Lemon","Atomic Mango"]},
-  {r:"V002",n:"Skull Vape CSA",c:"Vape",m:"CSA",d:"CSA Pod 1ml",p:4.5,v:["Demon Candy","Demon Kush","Demon Menthol"]},
-  {r:"V003",n:"Pods 1ml",c:"Vape",m:"Multi",d:"3 options rechargeables",p:3,v:["CBD","MCP-N","10-OH"]},
-  {r:"V004",n:"Batterie Pods",c:"Vape",m:"—",d:"USB-C rechargeable",p:4,v:[]},
-  {r:"M001",n:"Moonrock CBD",c:"Moonrock",m:"CBD",d:"Fleur+distillat+pollen",p:2.5,v:["CBD","MCP-N"]},
-  {r:"M002",n:"Icerock",c:"Moonrock",m:"CBD",d:"Wax+cristaux",p:3.5,v:["CBD","10-OH"]},
-  {r:"M003",n:"Moonrock CSA",c:"Moonrock",m:"CSA",d:"CSA enrichi",p:5,v:["CSA"]},
-  {r:"O001",n:"Huile Velaria™ CBD",c:"Huiles",m:"CBD",d:"Full Spectrum",p:3,v:["5%","10%","15%","20%","30%","40%"]},
-  {r:"O002",n:"Huile Velaria™ CBG",c:"Huiles",m:"CBG",d:"CBG",p:5,v:["10%","20%"]},
-  {r:"O003",n:"Huile Velaria™ CBN",c:"Huiles",m:"CBN",d:"Sommeil",p:5,v:["10%","20%"]},
-  {r:"E001",n:"Crude CBD",c:"Extraction",m:"CBD",d:"52% Full Spectrum",p:.45,v:[]},
-  {r:"E002",n:"Distillat CBD 85%",c:"Extraction",m:"CBD",d:"Full Spectrum",p:660,v:[]},
-  {r:"E003",n:"Distillat CBG 85%",c:"Extraction",m:"CBG",d:"Full Spectrum",p:1.1,v:[]},
-  {r:"E004",n:"Distillat CBN 60%",c:"Extraction",m:"CBN",d:"Full Spectrum",p:1.2,v:[]},
-  {r:"E005",n:"Distillat CBC 85%",c:"Extraction",m:"CBC",d:"Full Spectrum",p:3.5,v:[]},
-  {r:"E006",n:"Distillat MCP-N",c:"Extraction",m:"MCP-N",d:"Exclusif",p:1500,v:[]},
-  {r:"E007",n:"Distillat 10-OH 97%",c:"Extraction",m:"10-OH",d:"97% pureté",p:6.7,v:[]},
-  {r:"E008",n:"Distillat CSA",c:"Extraction",m:"CSA",d:"Exclusif",p:7.5,v:[]},
-  {r:"E009",n:"Isolat CBD 99.9%",c:"Extraction",m:"CBD",d:"Poudre >99.9%",p:.35,v:[]},
-  {r:"E010",n:"Isolat CBG 99.4%",c:"Extraction",m:"CBG",d:">99.4%",p:.96,v:[]},
-  {r:"E011",n:"Isolat CBN 99%+",c:"Extraction",m:"CBN",d:">99%",p:1.55,v:[]},
-  {r:"P001",n:"Pre Roll Jok'Air™ CBD",c:"Pre Rolls",m:"CBD",d:"Sans tabac",p:1.5,v:["CBD","MCP-N"]},
-  {r:"P002",n:"Pre Roll Jok'Air™ MCP-N",c:"Pre Rolls",m:"MCP-N",d:"MCP-N",p:2.5,v:["MCP-N"]},
+## TON IDENTITÉ
+- Entreprise : L'Entrepôt du Chanvrier (Geosiste)
+- Site : www.lentrepotduchanvrier.com  
+- Rôle : Grossiste & Fabricant CBD français, leader européen
+- Spécialité : Cannabinoïdes innovants (CSA-14, MCP-N, 10-OH-HHC) + gamme CBD complète
+
+## CATALOGUE COMPLET (prix grossiste)
+### Fleurs CBD (THC < 0.3%)
+- Amnesia Haze Indoor : 2.50€/g (CBD 22%, citron-terre)
+- OG Kush Greenhouse : 2.00€/g (CBD 18%, pin-diesel)  
+- Strawberry Outdoor : 1.50€/g (CBD 15%, fruité)
+- Mini Buds mix : 0.80€/g | Trim : 0.30€/g
+
+### Hash & Résines
+- Beldia CBD marocain : 3.00€/g (CBD 30%)
+- Ice-O-Lator CSA-14 : 5.00€/g (CSA 35%, labo FR)
+- Charras MCP-N : 4.50€/g (MCP-N 25%, hand-rubbed)
+- Pollen CBD : 2.50€/g | Hash 10-OH-HHC : 4.00€/g
+
+### Vapes & Puffs (Formule Explosive™ — SANS PG/VG/nicotine)
+- Grenade Vape CSA : 12€/pc (~600 puffs, CSA 95%)
+- Puff CBD 1000 : 8€/pc (~1000 puffs, CBD 80%)
+- Pod MCP-N rechargeable : 6€/pod (MCP-N 90%)
+
+### Huiles sublinguales
+- CBD 30% Full Spectrum : 18€/10ml (MCT bio)
+- CBN Sleep : 22€/10ml (CBN+CBD+mélatonine)
+- CBG Focus : 20€/10ml
+
+### Extractions & Isolats
+- Isolat CBD 99.9% : 1.80€/g (min 100g)
+- Distillat MCP-N 90% : 6€/g (min 50g)
+- Isolat CBG : 3€/g | CBN : 4€/g
+
+### Moonrock & Comestibles
+- Moonrock CSA : 8€/g (fleur + distillat + cristaux)
+- Gummies CSA x10 : 15€/sachet (10mg/pc)
+- Gummies 10-OH-HHC, Chocolat CBD, Miel CBD, Infusions
+
+### Cosmétiques & Accessoires
+- Crèmes, Baumes, Sérums CBD | Papers, Grinders, Stockage
+
+## MOLÉCULES — SAVOIR CRITIQUE
+### LÉGALES (nos produits) :
+CSA-14, MCP-N, 10-OH-HHC = semi-synthétiques, documentés, analyses LEAF
+CBD, CBG, CBN = naturels, bien établis
+
+### ILLÉGALES (à dénoncer) :
+MDMB-4en-PINACA, ADB-BUTINACA, 5F-MDMB-PICA = MORTELS
+⚠️ Red flags : prix < 0.50€/g sur du hash, "effet très fort", "défonce rapide", flash/malaise, provenance douteuse
+
+## TON COMPORTEMENT
+1. Tu es un COMMERCIAL PRO — tu connais chaque produit, chaque prix, chaque avantage
+2. Tu DÉTECTES les signaux de produits Pinaca frauduleux et tu alertes
+3. Tu ADAPTES ta langue au pays du prospect (FR, EN, DE, ES, IT, etc.)
+4. Tu ADAPTES ton style au canal :
+   - Email : professionnel, structuré, avec objet accrocheur
+   - WhatsApp : court, direct, emojis modérés, call-to-action
+   - Instagram DM : casual, vibes, emojis, hook rapide
+5. Tu proposes des ARGUMENTS DE VENTE ciblés (marges 60-70%, livraison 24-48h, analyses LEAF)
+6. Tu peux GÉNÉRER des newsletters, pitchs, relances, fiches produits
+7. Tu CALCULES les devis et marges si demandé
+8. Tu QUALIFIES les prospects (score, potentiel, besoins)`;
+
+// ─── PRODUCTS ────────────────────────────────────────────────
+const PRODS = [
+  {id:"fl01",cat:"Fleurs",nm:"Amnesia Haze CBD",thc:"<0.3%",cbd:"22%",pr:"2.50",u:"€/g",desc:"Indoor premium, arôme citron-terre, terpènes naturels",ic:"🌿"},
+  {id:"fl02",cat:"Fleurs",nm:"OG Kush CBD",thc:"<0.3%",cbd:"18%",pr:"2.00",u:"€/g",desc:"Greenhouse, notes pin-diesel, relaxant",ic:"🌿"},
+  {id:"fl03",cat:"Fleurs",nm:"Strawberry CBD",thc:"<0.3%",cbd:"15%",pr:"1.50",u:"€/g",desc:"Outdoor, fruité-sucré, idéal débutants",ic:"🌿"},
+  {id:"ha01",cat:"Hash",nm:"Beldia CBD",thc:"<0.3%",cbd:"30%",pr:"3.00",u:"€/g",desc:"Marocain traditionnel, texture souple, goût authentique",ic:"🟫"},
+  {id:"ha02",cat:"Hash",nm:"Ice O Lator CSA",thc:"<0.3%",mol:"CSA 35%",pr:"5.00",u:"€/g",desc:"Extraction ice-water, CSA-14, labo français",ic:"🟫"},
+  {id:"ha03",cat:"Hash",nm:"Charras MCP-N",thc:"<0.3%",mol:"MCP-N 25%",pr:"4.50",u:"€/g",desc:"Hand-rubbed, texture crémeuse",ic:"🟫"},
+  {id:"vp01",cat:"Vapes",nm:"Grenade Vape CSA",thc:"0%",mol:"CSA 95%",pr:"12.00",u:"€/pc",desc:"Formule Explosive™, ~600 puffs, distillat pur",ic:"💨"},
+  {id:"vp02",cat:"Vapes",nm:"Puff CBD 1000",thc:"0%",cbd:"80%",pr:"8.00",u:"€/pc",desc:"Broad spectrum, saveurs fruits, ~1000 puffs",ic:"💨"},
+  {id:"vp03",cat:"Vapes",nm:"Pod MCP-N",thc:"0%",mol:"MCP-N 90%",pr:"6.00",u:"€/pod",desc:"Rechargeable, batterie universelle",ic:"💨"},
+  {id:"hu01",cat:"Huiles",nm:"Huile CBD 30%",thc:"<0.2%",cbd:"30%",pr:"18.00",u:"€/10ml",desc:"Full spectrum, MCT bio, pipette graduée",ic:"💧"},
+  {id:"hu02",cat:"Huiles",nm:"Huile CBN Sleep",thc:"<0.2%",mol:"CBN 15%",pr:"22.00",u:"€/10ml",desc:"CBN + CBD + mélatonine, sommeil profond",ic:"💧"},
+  {id:"mr01",cat:"Moonrock",nm:"Moonrock CSA Premium",thc:"<0.3%",mol:"CSA 45%",pr:"8.00",u:"€/g",desc:"Fleur enrobée distillat + cristaux, ultra puissant",ic:"🌙"},
+  {id:"gm01",cat:"Comestibles",nm:"Gummies CSA x10",thc:"0%",mol:"CSA 10mg/pc",pr:"15.00",u:"€/sac",desc:"Saveurs assorties, dosage précis",ic:"🍬"},
+  {id:"is01",cat:"Extractions",nm:"Isolat CBD 99.9%",thc:"0%",cbd:"99.9%",pr:"1.80",u:"€/g",desc:"Poudre cristalline pure, analyses LEAF",ic:"⚗️"},
+  {id:"is02",cat:"Extractions",nm:"Distillat MCP-N 90%",thc:"0%",mol:"MCP-N 90%",pr:"6.00",u:"€/g",desc:"Amber oil, formulation labo France",ic:"⚗️"},
 ];
 
-// ── SÉQUENCES DE RELANCE ─────────────────────────────────────────────
-const SEQUENCES=[
-  {id:1,name:"Standard",steps:[
-    {day:0,type:"intro",label:"Premier contact"},
-    {day:3,type:"followup1",label:"Relance 1 — catalogue"},
-    {day:7,type:"followup2",label:"Relance 2 — offre -10%"},
-    {day:14,type:"special",label:"Offre spéciale volume"},
-    {day:30,type:"last",label:"Dernière chance"},
-  ]},
-  {id:2,name:"Molécules",steps:[
-    {day:0,type:"intro_mol",label:"Pitch CSA/MCP-N"},
-    {day:2,type:"sample",label:"Proposition échantillon"},
-    {day:5,type:"followup_mol",label:"Relance + prix volume"},
-    {day:10,type:"exclusive",label:"Offre exclu molécules"},
-    {day:21,type:"last",label:"Dernière relance"},
-  ]},
-  {id:3,name:"Agressive",steps:[
-    {day:0,type:"intro",label:"Contact direct"},
-    {day:1,type:"followup1",label:"Relance rapide"},
-    {day:3,type:"followup2",label:"Offre flash 48h"},
-    {day:7,type:"special",label:"Remise exceptionnelle"},
-  ]},
+const TPLS = [
+  {id:"t1",nm:"1er contact Email FR",ch:"email",lang:"fr",body:"Bonjour {nom},\n\nJe me permets de vous contacter de L'Entrepôt du Chanvrier, grossiste et fabricant CBD français.\n\nNotre gamme : fleurs indoor/greenhouse, hash CBD & CSA-14, vapes Formule Explosive™, huiles — fabriqués en France, analyses LEAF systématiques.\n\nMarges attractives de 60 à 70%, livraison 24-48h partout en Europe.\n\nDisponible pour un échange cette semaine ?\n\nCordialement,\n{agent}"},
+  {id:"t2",nm:"WhatsApp rapide",ch:"whatsapp",lang:"fr",body:"Bonjour {nom} 👋\n\n{agent} de L'Entrepôt du Chanvrier, grossiste CBD 🇫🇷\n\nNouveautés : hash CSA-14, vapes Formule Explosive™ sans PG/VG, prix grossiste.\n\nOn en parle ? 🌿"},
+  {id:"t3",nm:"DM Instagram",ch:"instagram",lang:"fr",body:"Hey {nom} ! 🌿\n\n{agent} de @lentrepot_du_chanvrier — grossiste CBD FR 🇫🇷\n\nHash CSA-14 + vapes Formule Explosive 💨 Les best-sellers du moment !\n\nPartenariat ? 🤝"},
+  {id:"t4",nm:"Relance douce",ch:"email",lang:"fr",body:"Bonjour {nom},\n\nJe reviens vers vous suite à mon précédent message.\n\nNos offres de lancement CSA-14 et MCP-N offrent des marges de 60-70% — c'est le moment idéal pour tester.\n\nQuelques minutes cette semaine ?\n\nBien à vous,\n{agent}"},
+  {id:"t5",nm:"First contact EN",ch:"email",lang:"en",body:"Hello {nom},\n\nReaching out from L'Entrepôt du Chanvrier, France's leading CBD wholesale manufacturer.\n\nComplete range: indoor flowers, CBD & CSA-14 hash, Explosive Formula™ vapes, oils — made in France, LEAF certified.\n\n60-70% margins, 24-48h delivery across Europe.\n\nAvailable for a quick call this week?\n\nBest regards,\n{agent}"},
+  {id:"t6",nm:"Newsletter produits",ch:"email",lang:"fr",body:"🌿 NEWSLETTER — L'Entrepôt du Chanvrier\n\nBonjour {nom},\n\nDécouvrez nos dernières nouveautés :\n\n{products}\n\n📦 Livraison express 24-48h Europe\n💰 Prix dégressifs dès 100g\n🔬 Chaque lot analysé LEAF\n🇫🇷 Fabriqué en France\n\nPassez commande → lentrepotduchanvrier.com\n\nL'équipe Geosiste 🌿"},
 ];
 
-// ── LANGUES PAR PAYS ─────────────────────────────────────────────────
-const LANG_MAP={"France":"fr","Belgique":"fr","Luxembourg":"fr","Suisse":"fr","Allemagne":"de","Autriche":"de","Pays-Bas":"nl","Espagne":"es","Italie":"it","Portugal":"pt","Pologne":"pl","Royaume-Uni":"en","Irlande":"en","Slovénie":"en","Lituanie":"en","Danemark":"en","Suède":"en","Finlande":"en","Grèce":"en","Rép. Tchèque":"en","Croatie":"en","Bulgarie":"en","Hongrie":"en","Roumanie":"en"};
-const LANG_NAMES={fr:"Français",en:"English",de:"Deutsch",es:"Español",it:"Italiano",pt:"Português",nl:"Nederlands",pl:"Polski"};
+const STATS = [{v:"new",l:"Nouveau",c:"#60a5fa"},{v:"contacted",l:"Contacté",c:"#fbbf24"},{v:"interested",l:"Intéressé",c:"#34d399"},{v:"negotiation",l:"Négo",c:"#fb923c"},{v:"client",l:"Client",c:"#22c55e"},{v:"lost",l:"Perdu",c:"#f87171"}];
+const FL = {FR:"🇫🇷",DE:"🇩🇪",ES:"🇪🇸",IT:"🇮🇹",UK:"🇬🇧",BE:"🇧🇪",PT:"🇵🇹",NL:"🇳🇱",PL:"🇵🇱",CH:"🇨🇭",AT:"🇦🇹",CZ:"🇨🇿",LU:"🇱🇺",US:"🇺🇸"};
+const TC = ["#60a5fa","#34d399","#fbbf24","#f87171","#a78bfa","#f472b6","#2dd4bf","#fb923c","#818cf8","#a3e635"];
 
-// ── SEGMENTATION INTELLIGENTE ────────────────────────────────────────
-const SEGMENTS={
-  buraliste:{label:"Buraliste",products:["V001","V002","V003","V004","P001","P002"],pitch:"Vapes Formule Explosive™ et Pre Rolls Jok'Air™ — packaging prêt-à-vendre, forte rotation"},
-  grossiste_mol:{label:"Grossiste Molécules",products:["E006","E007","E008","H002","H004","H009","H011","F001"],pitch:"CSA-14, MCP-N, 10-OH-HHC — distillats et hash enrichis, exclusifs"},
-  grossiste_cbd:{label:"Grossiste CBD classique",products:["H005","H006","H010","H013","F010","F004","E009","O001"],pitch:"Gamme CBD complète à prix imbattable — fleurs, hash, isolats, huiles Velaria™"},
-  ecommerce:{label:"E-commerce",products:["O001","O002","O003","V001","V002"],pitch:"Marque blanche + Formule Explosive™ — packaging premium, prêt pour la vente en ligne"},
-  franchise:{label:"Franchise / Chaîne",products:["V001","V002","P001","O001","H005","F004"],pitch:"Gamme complète clé en main — packaging, volumes, prix dégressifs, livraison 24h"},
-  premium:{label:"Shop Premium",products:["F001","F006","F012","H009","M003","E008"],pitch:"Hydroponie premium, CSA exclusif, Moonrock — pour une clientèle exigeante"},
-};
-
-// ── SYSTEM PROMPT ────────────────────────────────────────────────────
-const SYS=`Tu es l'agent commercial IA de L'Entrepôt du Chanvrier (Geosiste), grossiste/fabricant CBD français.
-Site: lentrepotduchanvrier.com | Marques: Formule Explosive™, Jok'Air™, Velaria™
-Livraison 24h Chronopost FR | 48h EU | Colis 100% assurés | -10%: #LANCEMENT
-
-CATALOGUE (50 produits):
-${CAT.map(p=>`${p.r} ${p.n} [${p.c}] ${p.m}: ${p.d} — ${p.p}€`).join("\n")}
-
-MOLÉCULES LÉGALES: CBD, CBG, CBN, CBC, MCP-N, 10-OH-HHC, CSA-14, Muscimol
-INTERDITES: HHC, H4CBD, THCP, THCA, HHCP, HHCPO, THCPO, THCJD
-PINACA: prix<0.30€/g, effets hallucinations, pas COA, "PTC/Spice/K2" → ALERTER
-
-LANGUE: Adapte automatiquement — FR pour France/BE/LU/CH, DE pour Allemagne/Autriche, ES pour Espagne, IT pour Italie, PT pour Portugal, NL pour Pays-Bas, EN pour le reste.
-
-SEGMENTATION: Buraliste→Vapes+PreRolls | Grossiste Mol→CSA/MCP-N/10-OH | Grossiste CBD→Hash+Fleurs+Isolats | E-com→White Label | Franchise→Gamme complète | Premium→Hydro+CSA
-
-À la FIN, ajoute: [DATA_START]{"intent":"discover|interested|ready_to_order|objection|pinaca_alert|question","products":["refs"],"hot":false,"notes":"10 mots max","segment":"buraliste|grossiste_mol|grossiste_cbd|ecommerce|franchise|premium|unknown"}[DATA_END]`;
-
-// ── CONSTANTES ────────────────────────────────────────────────────────
-const FL={"France":"🇫🇷","Allemagne":"🇩🇪","Suisse":"🇨🇭","Pays-Bas":"🇳🇱","Slovénie":"🇸🇮","Royaume-Uni":"🇬🇧","Pologne":"🇵🇱","Espagne":"🇪🇸","Italie":"🇮🇹","Belgique":"🇧🇪","Luxembourg":"🇱🇺","Lituanie":"🇱🇹","Autriche":"🇦🇹","Portugal":"🇵🇹","Danemark":"🇩🇰","Rép. Tchèque":"🇨🇿","Croatie":"🇭🇷"};
-const STS=[{v:"prospect",l:"Prospect",c:"#64748b",i:"⚪"},{v:"contacted",l:"Contacté",c:"#F59E0B",i:"📨"},{v:"interested",l:"Intéressé",c:"#8B5CF6",i:"💜"},{v:"hot",l:"Chaud",c:"#EF4444",i:"🔥"},{v:"ready",l:"Prêt",c:"#10B981",i:"💰"},{v:"client",l:"Client",c:"#06B6D4",i:"✅"},{v:"lost",l:"Perdu",c:"#374151",i:"❌"}];
-const SIZES=["Très Grand","Grand","Moyen-Grand","Moyen","Petit"];
-const CA_R=["50M€+","10-20M€","5-10M€","3-5M€","2-5M€","1-3M€","500k-2M€","<500k€","N/A"];
-
-// ── MAP COORDINATES ──────────────────────────────────────────────────
-const GEO={"France":[46.6,2.3],"Allemagne":[51.2,10.4],"Suisse":[46.8,8.2],"Pays-Bas":[52.1,5.3],"Belgique":[50.5,4.5],"Luxembourg":[49.6,6.1],"Espagne":[40.4,-3.7],"Italie":[41.9,12.5],"Portugal":[39.4,-8.2],"Royaume-Uni":[55.4,-3.4],"Pologne":[51.9,19.1],"Autriche":[47.5,14.6],"Slovénie":[46.2,14.8],"Lituanie":[55.2,23.9],"Danemark":[56.3,9.5],"Rép. Tchèque":[49.8,15.5],"Croatie":[45.1,15.2]};
-
-const INIT=[
-  {id:1,nm:"Le Petit Botaniste",co:"France",ct:"National",tp:"Grossiste Molécules",web:"lepetitbotaniste.com",em:"contact@lepetitbotaniste.com",ph:"",wa:"",ig:"lepetitbotaniste_cbd",li:"",sz:"Grand",ca:"3-5M€",pr:["CSA-14","CBDX"],st:"prospect",sc:97,ml:true,sg:"grossiste_mol",ints:[],pi:{},last:null,nt:"Réf. molécules puissantes FR/BE",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:2,nm:"CBDB2B",co:"France",ct:"National",tp:"Grossiste B2B",web:"cbdb2b.com",em:"contact@cbdb2b.com",ph:"",wa:"",ig:"",li:"",sz:"Grand",ca:"2-5M€",pr:["CBDX","NL1","THX+"],st:"prospect",sc:96,ml:true,sg:"grossiste_mol",ints:[],pi:{},last:null,nt:"CBDX/CSA-14/THX+/NL1 COA complet",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:3,nm:"Origine CBD",co:"France",ct:"National",tp:"Grossiste",web:"originecbd.fr",em:"contact@originecbd.fr",ph:"",wa:"",ig:"originecbd",li:"",sz:"Grand",ca:"2-5M€",pr:["CSA-14","Vapes CSA"],st:"prospect",sc:93,ml:true,sg:"grossiste_mol",ints:[],pi:{},last:null,nt:"CSA 90% vapes",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:4,nm:"Cibdol",co:"Suisse",ct:"Bâle",tp:"Fabricant",web:"cibdol.com",em:"info@cibdol.com",ph:"",wa:"",ig:"cibdol",li:"cibdol",sz:"Très Grand",ca:"10-20M€",pr:["Huiles"],st:"prospect",sc:93,ml:false,sg:"ecommerce",ints:[],pi:{},last:null,nt:"13k+ Trustpilot",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:5,nm:"420 Green Road",co:"France",ct:"Paris",tp:"Grossiste",web:"420greenroad.com",em:"contact@420greenroad.com",ph:"",wa:"",ig:"420greenroad",li:"",sz:"Grand",ca:"2-5M€",pr:["Fleurs","CSA"],st:"prospect",sc:92,ml:true,sg:"grossiste_mol",ints:[],pi:{},last:null,nt:"Partenaire existant CSA",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:6,nm:"Deli Hemp Pro",co:"France",ct:"National",tp:"Grossiste",web:"delihemp-pro.fr",em:"contact@delihemp-pro.fr",ph:"",wa:"",ig:"delihemp",li:"",sz:"Très Grand",ca:"5-10M€",pr:["2000+ réf"],st:"prospect",sc:90,ml:false,sg:"grossiste_cbd",ints:[],pi:{},last:null,nt:"2000+ réf",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:7,nm:"CBD'eau",co:"France",ct:"National",tp:"Franchise",web:"cbdeau.fr",em:"contact@cbdeau.fr",ph:"",wa:"",ig:"cbdeau_officiel",li:"",sz:"Très Grand",ca:"10-20M€",pr:["150+ boutiques"],st:"prospect",sc:90,ml:false,sg:"franchise",ints:[],pi:{},last:null,nt:"150+ boutiques FR",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:8,nm:"Nordic Oil",co:"Allemagne",ct:"Munich",tp:"Fabricant",web:"nordicoil.de",em:"info@nordicoil.de",ph:"",wa:"",ig:"nordicoil_de",li:"nordicoil",sz:"Très Grand",ca:"10-20M€",pr:["Huiles"],st:"prospect",sc:90,ml:false,sg:"ecommerce",ints:[],pi:{},last:null,nt:"Leader wellness CBD DE",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:9,nm:"Endoca",co:"Pays-Bas",ct:"Amsterdam",tp:"Fabricant",web:"endoca.com",em:"info@endoca.com",ph:"",wa:"",ig:"endoca",li:"endoca",sz:"Très Grand",ca:"10-20M€",pr:["Huiles"],st:"prospect",sc:89,ml:false,sg:"ecommerce",ints:[],pi:{},last:null,nt:"CO₂ supercritique bio",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:10,nm:"Cannactiva",co:"Espagne",ct:"Barcelone",tp:"Producteur",web:"cannactiva.com",em:"info@cannactiva.com",ph:"",wa:"",ig:"cannactiva_cbd",li:"cannactiva",sz:"Grand",ca:"3-5M€",pr:["Fleurs"],st:"prospect",sc:85,ml:false,sg:"grossiste_cbd",ints:[],pi:{},last:null,nt:"Distrib pharmacies/tabacs ES",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:11,nm:"Essentia Pura",co:"Slovénie",ct:"Ljubljana",tp:"White Label",web:"essentiapura.com",em:"info@essentiapura.com",ph:"",wa:"",ig:"essentiapura",li:"essentia-pura",sz:"Grand",ca:"3-5M€",pr:["White Label"],st:"prospect",sc:94,ml:false,sg:"ecommerce",ints:[],pi:{},last:null,nt:"GMP leader marque blanche EU",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:12,nm:"Reakiro",co:"Lituanie",ct:"Vilnius",tp:"Fabricant",web:"cbdreakiro.com",em:"info@cbdreakiro.com",ph:"",wa:"",ig:"reakiro",li:"reakiro",sz:"Grand",ca:"3-5M€",pr:["Huiles"],st:"prospect",sc:90,ml:false,sg:"grossiste_cbd",ints:[],pi:{},last:null,nt:"Seed-to-sale EIHA -60%",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:13,nm:"CBD 111",co:"Belgique",ct:"National",tp:"Grossiste Mol.",web:"cbd-111.com",em:"info@cbd-111.com",ph:"0499185830",wa:"32499185830",ig:"cbd111_be",li:"",sz:"Moyen-Grand",ca:"1-3M€",pr:["CSA-14","H4CBD"],st:"prospect",sc:89,ml:true,sg:"grossiste_mol",ints:[],pi:{},last:null,nt:"Grossiste BE/FR/LU molécules",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:14,nm:"Candropharm",co:"Pays-Bas",ct:"National",tp:"Private Label",web:"candropharm.com",em:"info@candropharm.com",ph:"",wa:"",ig:"candropharm",li:"candropharm",sz:"Grand",ca:"3-5M€",pr:["Private Label"],st:"prospect",sc:88,ml:false,sg:"ecommerce",ints:[],pi:{},last:null,nt:"900+ clients B2B sans MOQ",seq:null,seqStep:0,orders:[],revenue:0},
-  {id:15,nm:"Hempati",co:"Italie",ct:"National",tp:"Producteur",web:"hempati.com",em:"info@hempati.com",ph:"",wa:"",ig:"hempati_cbd",li:"hempati",sz:"Grand",ca:"2-5M€",pr:["Fleurs IT"],st:"prospect",sc:84,ml:false,sg:"grossiste_cbd",ints:[],pi:{},last:null,nt:"Chanvre bio IT export EU",seq:null,seqStep:0,orders:[],revenue:0},
+const DEMO = [
+  {id:1,nm:"CBD Shop Lyon",co:"FR",em:"contact@cbdlyon.fr",wa:"+33612345678",ig:"@cbdshoplyon",st:"new",tg:["boutique"],sc:85,ca:0,nt:"",ints:[],vn:[]},
+  {id:2,nm:"HanfHaus Berlin",co:"DE",em:"info@hanfhaus.de",wa:"+4917612345",ig:"@hanfhaus_berlin",st:"contacted",tg:["grossiste"],sc:72,ca:0,nt:"Intéressé vapes",ints:[],vn:[]},
+  {id:3,nm:"Cannabis Store BCN",co:"ES",em:"ventas@csbarcelona.es",wa:"+34612345678",ig:"@cs_barcelona",st:"interested",tg:["boutique","vip"],sc:90,ca:2400,nt:"Veut CSA-14 en quantité",ints:[],vn:[]},
+  {id:4,nm:"Green Smoke Paris",co:"FR",em:"pro@greensmoke.fr",wa:"+33698765432",ig:"@greensmokeparis",st:"client",tg:["buraliste","vip"],sc:95,ca:8500,nt:"Client fidèle, commande mensuelle hash + vapes",ints:[],vn:[]},
+  {id:5,nm:"CBD Italia Milano",co:"IT",em:"info@cbditalia.it",wa:"+39345678901",ig:"@cbditalia_mi",st:"negotiation",tg:["e-commerce"],sc:78,ca:1200,nt:"Négo huiles + gummies",ints:[],vn:[]},
 ];
 
-// ══════════════════════════════════════════════════════════════════════
-export default function App(){
-  const[db,setDb]=useState(INIT);
-  const[vw,setVw]=useState("dash");
-  const[chat,setChat]=useState([]);
-  const[inp,setInp]=useState("");
-  const[ld,setLd]=useState(false);
-  const[sel,setSel]=useState(null);
-  const[ch,setCh]=useState("email");
-  const[alerts,setAlerts]=useState([]);
-  const[showA,setShowA]=useState(false);
-  const[srch,setSrch]=useState("");
-  const[fM,setFM]=useState(false);
-  const[fS,setFS]=useState("all");
-  const[fC,setFC]=useState("all");
-  // Auto agent
-  const[autoOn,setAutoOn]=useState(false);
-  const[autoLog,setAL]=useState([]);
-  const[autoSt,setAS]=useState({sent:0,hot:0,ready:0,err:0});
-  const[autoSpd,setASpd]=useState(5);
-  const[autoCh,setACh]=useState("email");
-  const[autoTgt,setATgt]=useState("all");
-  const autoRef=useRef(false);
-  // Config
-  const[waNum,setWaNum]=useState("");
-  const[pKey,setPK]=useState("");
-  const[pRes,setPR]=useState("");
-  // Add form
-  const[showAdd,setShowAdd]=useState(false);
-  const[af,setAf]=useState({nm:"",co:"France",ct:"",tp:"",web:"",em:"",ph:"",wa:"",ig:"",li:"",pr:"",sz:"Moyen",ca:"N/A",nt:""});
-  // Edit + CSV
-  const[editId,setEditId]=useState(null);
-  const[csvText,setCsvText]=useState("");
-  // Orders
-  const[showOrder,setShowOrder]=useState(null);
-  const[orderForm,setOF]=useState({products:"",amount:"",date:""});
-  // Supabase
-  const[supaOk,setSupaOk]=useState(false);
-  const[supaMsg,setSupaMsg]=useState("");
-  const[dbLoaded,setDbLoaded]=useState(false);
-  const saveTimer=useRef(null);
+export default function App() {
+  // ─── AUTH ──────────────────────────────────────────────────
+  const [logged, setLogged] = useState(false);
+  const [me, setMe] = useState(null);
+  const [users, setUsers] = useState([{id:1,nm:"Admin",em:"admin@geosiste.com",pw:"geosiste2024",role:"admin"}]);
+  const [lEm, setLEm] = useState("");
+  const [lPw, setLPw] = useState("");
+  const [lErr, setLErr] = useState("");
 
-  // ── SUPABASE: LOAD ON MOUNT ──────────────────────────────────────
-  useEffect(()=>{
-    if(!SUPA_READY){setSupaMsg("⚠️ Supabase non configuré — mode local");setDbLoaded(true);return;}
-    (async()=>{
-      setSupaMsg("⏳ Connexion Supabase...");
-      const data=await supa.load("prospects");
-      if(data&&data.length>0){
-        // Map Supabase rows to app format
-        const mapped=data.map(r=>({
-          id:r.id,nm:r.nm||"",co:r.co||"France",ct:r.ct||"",tp:r.tp||"",web:r.web||"",em:r.em||"",
-          ph:r.ph||"",wa:r.wa||"",ig:r.ig||"",li:r.li||"",sz:r.sz||"Moyen",ca:r.ca||"N/A",
-          pr:typeof r.pr==="string"?JSON.parse(r.pr||"[]"):r.pr||[],
-          st:r.st||"prospect",sc:r.sc||60,ml:!!r.ml,sg:r.sg||"grossiste_cbd",
-          ints:typeof r.ints==="string"?JSON.parse(r.ints||"[]"):r.ints||[],
-          pi:typeof r.pi==="string"?JSON.parse(r.pi||"{}"):r.pi||{},
-          last:r.last||null,nt:r.nt||"",seq:r.seq||null,seqStep:r.seq_step||0,
-          orders:typeof r.orders==="string"?JSON.parse(r.orders||"[]"):r.orders||[],
-          revenue:r.revenue||0
-        }));
-        setDb(mapped);
-        setSupaMsg(`✅ ${mapped.length} prospects chargés`);
-        setSupaOk(true);
-      } else if(data&&data.length===0) {
-        // First time — push INIT data to Supabase
-        setSupaMsg("📤 Premier lancement — envoi données initiales...");
-        await saveAllToSupa(INIT);
-        setSupaMsg(`✅ ${INIT.length} prospects initialisés`);
-        setSupaOk(true);
-      } else {
-        setSupaMsg("❌ Erreur connexion — mode local");
-      }
-      // Load config
-      const cfg=await supa.loadConfig("settings");
-      if(cfg){if(cfg.waNum)setWaNum(cfg.waNum);if(cfg.pKey)setPK(cfg.pKey);}
-      // Load alerts
-      const savedAlerts=await supa.loadConfig("alerts");
-      if(savedAlerts)setAlerts(savedAlerts);
-      setDbLoaded(true);
-    })();
-  },[]);
+  // ─── NAVIGATION : 5 sections + sous-pages ──────────────────
+  const [section, setSection] = useState("dash"); // dash, agent, crm, tools, config
+  const [subPage, setSubPage] = useState(""); // sous-pages dans chaque section
 
-  // ── SUPABASE: AUTO-SAVE ON DB CHANGE ─────────────────────────────
-  const saveAllToSupa=async(data)=>{
-    if(!SUPA_READY)return;
-    const rows=data.map(p=>({
-      id:p.id,nm:p.nm,co:p.co,ct:p.ct,tp:p.tp,web:p.web,em:p.em,ph:p.ph,wa:p.wa,ig:p.ig,li:p.li,
-      sz:p.sz,ca:p.ca,pr:JSON.stringify(p.pr),st:p.st,sc:p.sc,ml:p.ml,sg:p.sg,
-      ints:JSON.stringify(p.ints),pi:JSON.stringify(p.pi),last:p.last,nt:p.nt,
-      seq:p.seq,seq_step:p.seqStep,orders:JSON.stringify(p.orders),revenue:p.revenue
-    }));
-    await supa.upsert("prospects",rows);
-  };
-
-  useEffect(()=>{
-    if(!SUPA_READY||!dbLoaded)return;
-    // Debounce: save 2s after last change
-    if(saveTimer.current)clearTimeout(saveTimer.current);
-    saveTimer.current=setTimeout(()=>{saveAllToSupa(db);},2000);
-    return()=>{if(saveTimer.current)clearTimeout(saveTimer.current);};
-  },[db,dbLoaded]);
-
-  // Save config when waNum or pKey change
-  useEffect(()=>{
-    if(!SUPA_READY||!dbLoaded)return;
-    supa.saveConfig("settings",{waNum,pKey});
-  },[waNum,pKey,dbLoaded]);
-
-  // Save alerts
-  useEffect(()=>{
-    if(!SUPA_READY||!dbLoaded||alerts.length===0)return;
-    supa.saveConfig("alerts",alerts.slice(0,50));
-  },[alerts,dbLoaded]);
-  
-  const chatEnd=useRef(null);
-  const scroll=()=>setTimeout(()=>chatEnd.current?.scrollIntoView({behavior:"smooth"}),80);
-  const parseD=t=>{const m=t.match(/\[DATA_START\]([\s\S]*?)\[DATA_END\]/);if(!m)return null;try{return JSON.parse(m[1]);}catch{return null;}};
-  const cleanR=t=>t.replace(/\[DATA_START\][\s\S]*?\[DATA_END\]/g,"").trim();
-  const now=()=>new Date().toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-  const COUNTRIES=[...new Set(db.map(p=>p.co))].sort();
-
-  // ── DYNAMIC SCORING ─────────────────────────────────────────────
-  const calcScore=(p)=>{
-    let s=p.sc;
-    if(p.ints.length>0)s+=Math.min(p.ints.length*2,10);
-    if(p.ints.some(i=>i.intent==="interested"))s+=5;
-    if(p.ints.some(i=>i.intent==="ready_to_order"))s+=15;
-    if(p.revenue>0)s+=10;
-    const daysSince=p.last?Math.floor((Date.now()-new Date(p.last?.split(",").reverse().join("-")+"T00:00"))/86400000):999;
-    if(daysSince>30&&p.st!=="client")s-=5;
-    if(daysSince>60&&p.st!=="client")s-=10;
-    return Math.max(0,Math.min(100,s));
-  };
-
-  // ── UPDATE FROM AI ──────────────────────────────────────────────
-  const updateP=(id,data)=>{
-    if(!data)return;const t=now();
-    setDb(prev=>prev.map(p=>{
-      if(p.id!==id)return p;
-      const ni=[...p.ints,{t,intent:data.intent,prods:data.products||[],notes:data.notes,ch,seg:data.segment}];
-      const np={...p.pi};(data.products||[]).forEach(r=>{const prod=CAT.find(c=>c.r===r);np[prod?.n||r]=(np[prod?.n||r]||0)+1;});
-      let ns=p.st;
-      if(data.intent==="ready_to_order")ns="ready";
-      else if(data.hot)ns="hot";
-      else if(data.intent==="interested")ns="interested";
-      else if(p.st==="prospect")ns="contacted";
-      const sg=data.segment&&data.segment!=="unknown"?data.segment:p.sg;
-      return{...p,ints:ni,pi:np,st:ns,last:t,sg};
-    }));
-    if(data.intent==="ready_to_order"||data.hot||data.intent==="pinaca_alert"){
-      const pr=db.find(p=>p.id===id);
-      const msg=data.intent==="ready_to_order"?`💰 ${pr?.nm} PRÊT À COMMANDER !`:data.intent==="pinaca_alert"?`⚠️ PINACA — ${pr?.nm}`:`🔥 ${pr?.nm} très intéressé`;
-      setAlerts(prev=>[{id:Date.now(),t:new Date().toLocaleTimeString(),msg,type:data.intent,pid:id,read:false},...prev]);
-      setShowA(true);setTimeout(()=>setShowA(false),5000);
-      if(waNum)window.open(`https://wa.me/${waNum.replace(/[^0-9]/g,"")}?text=${encodeURIComponent("🚨 GEOSISTE\n"+msg)}`,"_blank");
-    }
-  };
-
-  // ── SEND CHAT ───────────────────────────────────────────────────
-  const send=async(msg)=>{
-    if(!msg.trim()||ld)return;
-    const lang=sel?LANG_MAP[sel.co]||"en":"fr";
-    const seg=sel?SEGMENTS[sel.sg]||{}:{};
-    const ctx=sel?`\n[PROSPECT: ${sel.nm} (${sel.co}/${sel.ct}) | ${sel.web} | Mol:${sel.ml?"OUI":"NON"} | Segment:${sel.sg} | Produits recommandés: ${seg.products?.join(",")||"tous"} | Pitch: ${seg.pitch||""} | Langue: ${LANG_NAMES[lang]||lang} | ${sel.ints.length} interactions | Revenue: ${sel.revenue}€]\n[CANAL: ${ch}]`:"";
-    const nc=[...chat,{role:"user",content:msg}];
-    setChat(nc);setInp("");setLd(true);scroll();
-    try{
-      const msgs=nc.map(m=>({role:m.role,content:m.content}));
-      msgs[msgs.length-1]={role:"user",content:msgs[msgs.length-1].content+ctx};
-      const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:SYS,messages:msgs})});
-      if(!res.ok)throw new Error(`API ${res.status}`);
-      const d=await res.json();
-      const raw=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("\n")||"";
-      if(!raw)throw new Error("Réponse vide");
-      setChat(prev=>[...prev,{role:"assistant",content:cleanR(raw)}]);
-      if(sel)updateP(sel.id,parseD(raw));
-    }catch(e){setChat(prev=>[...prev,{role:"assistant",content:`❌ ${e.message}\n\n💡 L'agent nécessite l'API Claude.`}]);}
-    setLd(false);scroll();
-  };
-
-  // ── AUTO AGENT WITH SEQUENCES ───────────────────────────────────
-  const startAuto=async()=>{
-    autoRef.current=true;setAutoOn(true);
-    const targets=db.filter(p=>{if(p.st==="client"||p.st==="lost")return false;if(autoTgt==="mol")return p.ml;if(autoTgt==="hi")return calcScore(p)>=85;return true;}).sort((a,b)=>calcScore(b)-calcScore(a));
-    setAL(prev=>[`🚀 ${targets.length} prospects via ${autoCh}`,...prev]);
-    for(const prospect of targets){
-      if(!autoRef.current)break;
-      const lang=LANG_MAP[prospect.co]||"en";
-      const seg=SEGMENTS[prospect.sg]||SEGMENTS.grossiste_cbd;
-      const seqId=prospect.ml?2:1;
-      const seq=SEQUENCES.find(s=>s.id===seqId);
-      const step=seq.steps[Math.min(prospect.seqStep,seq.steps.length-1)];
-      try{
-        const prompt=`Tu démarches ${prospect.nm} (${prospect.co}). Type: ${prospect.tp}. Segment: ${prospect.sg}. Produits: ${prospect.pr.join(",")}. Site: ${prospect.web}. ${prospect.ml?"Molécules alternatives — pitch CSA/MCP-N/10-OH.":"CBD classique."}
-Langue: ${LANG_NAMES[lang]}. Canal: ${autoCh}. Étape séquence: ${step.label} (J+${step.day}).
-Produits recommandés pour ce segment: ${seg.products?.map(r=>CAT.find(c=>c.r===r)?.n).filter(Boolean).join(", ")}
-Pitch segment: ${seg.pitch}
-${autoCh==="whatsapp"?"Max 300 car, emojis.":autoCh==="instagram"?"Max 200 car, accrocheur.":"Email pro avec objet."}
-${step.type.includes("followup")?"C'est une RELANCE — fais référence au message précédent.":""}
-${step.type==="special"?"Propose une OFFRE SPÉCIALE: -10% sur première commande ou échantillon gratuit.":""}
-${step.type==="last"?"DERNIÈRE RELANCE — crée l'urgence, offre limitée dans le temps.":""}`;
-        const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,system:SYS,messages:[{role:"user",content:prompt}]})});
-        if(!res.ok)throw new Error(`${res.status}`);
-        const d=await res.json();
-        const raw=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("\n")||"";
-        const data=parseD(raw);const msg=cleanR(raw);
-        setDb(prev=>prev.map(p=>p.id!==prospect.id?p:{...p,st:p.st==="prospect"?"contacted":p.st,last:now(),seqStep:Math.min(p.seqStep+1,(seq?.steps.length||5)-1),seq:seqId,ints:[...p.ints,{t:now(),intent:data?.intent||"outbound",prods:data?.products||[],notes:`[${step.label}] ${data?.notes||msg.substring(0,40)}`,ch:autoCh,autoMsg:msg,seg:data?.segment}]}));
-        setAS(prev=>({...prev,sent:prev.sent+1,...(data?.hot?{hot:prev.hot+1}:{}),...(data?.intent==="ready_to_order"?{ready:prev.ready+1}:{})}));
-        setAL(prev=>[`✅ ${prospect.nm} — ${step.label}`,...prev]);
-        if(data?.hot||data?.intent==="ready_to_order"){
-          setAlerts(prev=>[{id:Date.now(),t:new Date().toLocaleTimeString(),msg:`🤖 ${data?.intent==="ready_to_order"?"💰":"🔥"} ${prospect.nm}`,type:data.intent,pid:prospect.id,read:false},...prev]);
-        }
-      }catch(e){setAS(prev=>({...prev,err:prev.err+1}));setAL(prev=>[`❌ ${prospect.nm}: ${e.message}`,...prev]);}
-      await new Promise(r=>setTimeout(r,autoSpd*1000));
-    }
-    autoRef.current=false;setAutoOn(false);setAL(prev=>["🏁 Terminé",...prev]);
-  };
-
-  // ── ADD ORDER ───────────────────────────────────────────────────
-  const addOrder=(id)=>{
-    const amt=parseFloat(orderForm.amount)||0;if(!amt)return;
-    setDb(prev=>prev.map(p=>p.id!==id?p:{...p,st:"client",orders:[...p.orders,{date:orderForm.date||now(),products:orderForm.products,amount:amt}],revenue:p.revenue+amt}));
-    setOF({products:"",amount:"",date:""});setShowOrder(null);
-  };
-
-  // ── COMPUTED ────────────────────────────────────────────────────
-  const allPI=db.flatMap(p=>Object.entries(p.pi)).reduce((a,[k,v])=>{a[k]=(a[k]||0)+v;return a;},{});
-  const topP=Object.entries(allPI).sort((a,b)=>b[1]-a[1]);
-  const totI=db.reduce((a,p)=>a+p.ints.length,0);
-  const totR=db.reduce((a,p)=>a+p.revenue,0);
-  const filtered=db.filter(p=>{if(srch&&!p.nm.toLowerCase().includes(srch.toLowerCase()))return false;if(fM&&!p.ml)return false;if(fS!=="all"&&p.st!==fS)return false;if(fC!=="all"&&p.co!==fC)return false;return true;}).sort((a,b)=>calcScore(b)-calcScore(a));
-  const unread=alerts.filter(a=>!a.read).length;
-  const convRate=db.filter(p=>p.st!=="prospect").length?Math.round(db.filter(p=>["client","ready"].includes(p.st)).length/db.filter(p=>p.st!=="prospect").length*100):0;
-  // Conversion by country
-  const convByCountry=COUNTRIES.map(c=>{const all=db.filter(p=>p.co===c);const conv=all.filter(p=>["client","ready","hot"].includes(p.st));return{co:c,total:all.length,conv:conv.length,rate:all.length?Math.round(conv.length/all.length*100):0};}).sort((a,b)=>b.rate-a.rate);
-  // Conversion by channel
-  const convByCh=["email","whatsapp","instagram"].map(c=>{const msgs=db.flatMap(p=>p.ints.filter(i=>i.ch===c));return{ch:c,total:msgs.length,hot:msgs.filter(i=>["interested","ready_to_order"].includes(i.intent)).length};});
-  // Follow-ups due
-  const followUpsDue=db.filter(p=>{
-    if(!p.seq||p.st==="client"||p.st==="lost")return false;
-    const seq=SEQUENCES.find(s=>s.id===p.seq);if(!seq)return false;
-    const nextStep=seq.steps[p.seqStep];if(!nextStep)return false;
-    if(!p.last)return true;
-    const lastDate=new Date();// simplified — would parse p.last in production
-    return true;// show all pending
+  // ─── CONNECTIONS ───────────────────────────────────────────
+  const [conn, setConn] = useState({
+    claude: {status:"idle"},
+    pappers: {status:"idle",key:""},
+    email: {status:"idle",accounts:[{id:1,em:"",label:"Principal",active:true}]},
+    whatsapp: {status:"idle",num:""},
+    instagram: {status:"idle",accounts:[{id:1,handle:"",label:"Principal",active:true}]},
   });
 
-  const fs={padding:"6px 7px",borderRadius:6,background:"#080d17",border:"1px solid #1a2332",color:"#94a3b8",fontSize:10,fontFamily:"'Outfit',sans-serif"};
-  const openE=(to,s,b)=>window.open(`mailto:${to}?subject=${encodeURIComponent(s)}&body=${encodeURIComponent(b)}`);
-  const openW=(ph,t)=>window.open(`https://wa.me/${ph.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(t)}`);
-  const openI=h=>window.open(`https://instagram.com/${h.replace("@","")}`);
-  const openL=u=>window.open(u.startsWith("http")?u:`https://linkedin.com/company/${u}`);
-  const delP=id=>{if(confirm("Supprimer ?")){setDb(prev=>prev.filter(p=>p.id!==id));if(SUPA_READY)supa.del("prospects",id);}if(sel?.id===id)setSel(null);};
-  const editField=(id,k,v)=>setDb(prev=>prev.map(p=>p.id===id?{...p,[k]:v}:p));
-  const importCSV=()=>{
-    if(!csvText.trim())return;
-    const mx=Math.max(...db.map(p=>p.id),0);
-    const mK=["CSA","CBDX","NL1","THX","HHC","10-OH","MCPN"];
-    const lines=csvText.split("\n").filter(l=>l.trim());
-    const newP=lines.map((l,i)=>{const p=l.split(";").map(s=>s.trim());const pArr=(p[5]||"CBD").split(",").map(s=>s.trim());const ml=pArr.some(x=>mK.some(m=>x.toUpperCase().includes(m)));
-    return{id:mx+i+1,nm:p[0]||"Import",co:p[1]||"France",ct:p[2]||"",tp:"Import CSV",web:p[3]||"",em:p[4]||"",ph:"",wa:"",ig:"",li:"",sz:"Moyen",ca:"N/A",pr:pArr,st:"prospect",sc:ml?72:55,ml,sg:ml?"grossiste_mol":"grossiste_cbd",ints:[],pi:{},last:null,nt:p[6]||"",seq:null,seqStep:0,orders:[],revenue:0};});
-    setDb(prev=>[...prev,...newP]);setCsvText("");
-  };
-  const addP=()=>{
-    if(!af.nm.trim())return;
-    const mx=Math.max(...db.map(p=>p.id),0);
-    const mK=["CSA","CBDX","NL1","THX","HHC","10-OH","MCPN"];
-    const pArr=(af.pr||"CBD").split(",").map(s=>s.trim());
-    const ml=pArr.some(p=>mK.some(m=>p.toUpperCase().includes(m)));
-    setDb(prev=>[...prev,{id:mx+1,nm:af.nm,co:af.co||"France",ct:af.ct,tp:af.tp,web:af.web,em:af.em,ph:af.ph,wa:af.wa,ig:af.ig,li:af.li,sz:af.sz,ca:af.ca,pr:pArr,st:"prospect",sc:ml?75:60,ml,sg:ml?"grossiste_mol":"grossiste_cbd",ints:[],pi:{},last:null,nt:af.nt,seq:null,seqStep:0,orders:[],revenue:0}]);
-    setAf({nm:"",co:"France",ct:"",tp:"",web:"",em:"",ph:"",wa:"",ig:"",li:"",pr:"",sz:"Moyen",ca:"N/A",nt:""});setShowAdd(false);
-  };
+  // ─── AGENT IA ──────────────────────────────────────────────
+  const [db, setDb] = useState(DEMO);
+  const [sel, setSel] = useState(null);
+  const [ch, setCh] = useState("email");
+  const [chat, setChat] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [inp, setInp] = useState("");
+  const chatRef = useRef(null);
+
+  // ─── DATA ──────────────────────────────────────────────────
+  const [hist, setHist] = useState([]);
+  const [fups, setFups] = useState([]);
+  const [tpls, setTpls] = useState(TPLS);
+  const [editTpl, setEditTpl] = useState(null);
+  const [tags, setTags] = useState(["boutique","grossiste","buraliste","e-commerce","vip"]);
+  const [newTag, setNewTag] = useState("");
+  const [fTag, setFTag] = useState("");
+  const [notifs, setNotifs] = useState([]);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [caData] = useState([{m:"Jan",v:2400},{m:"Fév",v:3100},{m:"Mar",v:4800},{m:"Avr",v:3900},{m:"Mai",v:5200},{m:"Jun",v:6100},{m:"Jul",v:4300},{m:"Aoû",v:3800},{m:"Sep",v:7200},{m:"Oct",v:8500},{m:"Nov",v:9100},{m:"Déc",v:11200}]);
+
+  // Newsletter
+  const [nlProds, setNlProds] = useState([]);
+  const [nlSubj, setNlSubj] = useState("🌿 Nouveautés CBD — L'Entrepôt du Chanvrier");
+  const [nlGen, setNlGen] = useState("");
+  const [nlTags, setNlTags] = useState([]);
+
   // Pappers
-  const searchP=async(q)=>{
-    if(!pKey){setPR("❌ Clé requise");return;}setPR("⏳...");
-    try{const r=await fetch(`https://api.pappers.fr/v2/recherche?api_token=${pKey}&q=${encodeURIComponent(q)}&par_page=100&statut_rcs=A`);const d=await r.json();
-    if(d.resultats?.length){const mx=Math.max(...db.map(p=>p.id),0);const n=d.resultats.filter(r=>r.nom_entreprise&&!db.some(p=>p.nm.toLowerCase()===r.nom_entreprise.toLowerCase())).map((r,i)=>({id:mx+i+1,nm:r.nom_entreprise,co:"France",ct:r.siege?.ville||"",tp:r.libelle_code_naf||"Pappers",web:"",em:"",ph:"",wa:"",ig:"",li:"",sz:"Moyen",ca:"N/A",pr:["CBD"],st:"prospect",sc:55,ml:false,sg:"grossiste_cbd",ints:[],pi:{},last:null,nt:`SIREN:${r.siren||""}`,seq:null,seqStep:0,orders:[],revenue:0}));
-    setDb(prev=>[...prev,...n]);setPR(`✅ +${n.length}/${d.total}`);}else setPR("0 résultat");}catch(e){setPR("❌ "+e.message);}};
+  const [papQ, setPapQ] = useState("");
+  const [papF, setPapF] = useState({naf:"",dept:"",ville:"",ca_min:"",ca_max:"",effectif_min:"",effectif_max:"",forme_juridique:"",date_creation_min:"",date_creation_max:""});
+  const [papRes, setPapRes] = useState([]);
+  const [papLoad, setPapLoad] = useState(false);
+  const [papPg, setPapPg] = useState(1);
 
-  return(
-    <div style={{minHeight:"100vh",background:"#050810",fontFamily:"'Outfit',sans-serif",color:"#e2e8f0"}}>
-      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  // Import
+  const [impPrev, setImpPrev] = useState([]);
+  const [impFile, setImpFile] = useState(null);
+  const [impSt, setImpSt] = useState("");
+  const fileRef = useRef(null);
 
-      {/* ALERT */}
-      {showA&&alerts[0]&&<div style={{position:"fixed",top:6,left:6,right:6,zIndex:999,background:alerts[0].type==="pinaca_alert"?"#450a0a":"#052e16",border:"1px solid "+(alerts[0].type==="pinaca_alert"?"#dc2626":"#16a34a"),borderRadius:10,padding:"10px 12px",boxShadow:"0 8px 30px rgba(0,0,0,.6)"}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#fff"}}>{alerts[0].msg}</div>
-        <div style={{display:"flex",gap:4,marginTop:6}}>
-          <button onClick={()=>{setSel(db.find(x=>x.id===alerts[0].pid)||null);setVw("agent");setShowA(false);setAlerts(p=>p.map((a,i)=>i===0?{...a,read:true}:a));}} style={{flex:1,padding:5,borderRadius:5,background:"#fff",color:"#000",border:"none",fontSize:10,fontWeight:700,cursor:"pointer"}}>🖐️ Prendre la main</button>
-          <button onClick={()=>{setShowA(false);setAlerts(p=>p.map((a,i)=>i===0?{...a,read:true}:a));}} style={{padding:"5px 10px",borderRadius:5,background:"transparent",color:"#fff",border:"1px solid #fff3",fontSize:10,cursor:"pointer"}}>OK</button>
+  // Voice
+  const [rec, setRec] = useState(false);
+  const mrRef = useRef(null);
+  const ckRef = useRef([]);
+
+  // ─── EFFECTS ───────────────────────────────────────────────
+  useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [chat]);
+
+  const addN = (msg) => setNotifs(p => [{id:Date.now()+Math.random(),msg,date:new Date().toISOString(),read:false},...p]);
+  const unread = notifs.filter(n => !n.read).length;
+  const totCA = db.reduce((s, p) => s + (p.ca || 0), 0);
+  const fDb = fTag ? db.filter(p => p.tg?.includes(fTag)) : db;
+
+  // ─── CONNECTION TESTS ──────────────────────────────────────
+  const testClaude = async () => {
+    setConn(p=>({...p,claude:{...p.claude,status:"testing"}}));
+    try {
+      const r = await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:50,messages:[{role:"user",content:"Dis juste OK"}]})});
+      const d = await r.json();
+      if(d.content?.[0]?.text){setConn(p=>({...p,claude:{status:"connected"}}));addN("✅ Claude API connectée");}
+      else throw new Error("Pas de réponse");
+    } catch(e){setConn(p=>({...p,claude:{status:"error"}}));addN("❌ Claude: vérifiez ANTHROPIC_API_KEY");}
+  };
+  const testPappers = async () => {
+    if(!conn.pappers.key){addN("❌ Entrez votre clé Pappers");return;}
+    setConn(p=>({...p,pappers:{...p.pappers,status:"testing"}}));
+    try {
+      const r = await fetch(`https://api.pappers.fr/v2/entreprise?api_token=${conn.pappers.key}&siren=443061841`);
+      const d = await r.json();
+      if(d.siren){setConn(p=>({...p,pappers:{...p.pappers,status:"connected"}}));addN("✅ Pappers connecté");}
+      else throw new Error(d.message||"Erreur");
+    } catch(e){setConn(p=>({...p,pappers:{...p.pappers,status:"error"}}));addN("❌ Pappers: "+e.message);}
+  };
+  const testEmail = () => {const ok=conn.email.accounts.filter(a=>a.em.includes("@"));if(ok.length){setConn(p=>({...p,email:{...p.email,status:"connected"}}));addN(`✅ ${ok.length} email(s) OK`);}else{setConn(p=>({...p,email:{...p.email,status:"error"}}));addN("❌ Aucun email valide");}};
+  const testWA = () => {if(conn.whatsapp.num?.length>8){setConn(p=>({...p,whatsapp:{...p.whatsapp,status:"connected"}}));addN("✅ WhatsApp configuré");}else{setConn(p=>({...p,whatsapp:{...p.whatsapp,status:"error"}}));addN("❌ Numéro invalide");}};
+  const testIG = () => {const ok=conn.instagram.accounts.filter(a=>a.handle?.startsWith("@")&&a.handle.length>2);if(ok.length){setConn(p=>({...p,instagram:{...p.instagram,status:"connected"}}));addN(`✅ ${ok.length} Instagram OK`);}else{setConn(p=>({...p,instagram:{...p.instagram,status:"error"}}));addN("❌ Handle invalide");}};
+
+  // ─── CLAUDE AI ─────────────────────────────────────────────
+  const askAI = async (msgs, sys = SYS) => {
+    try {
+      const r = await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,system:sys,messages:msgs})});
+      const d = await r.json();
+      return d.content?.[0]?.text || "Erreur de réponse IA.";
+    } catch(e){ return "❌ Erreur: "+e.message; }
+  };
+
+  const sendMsg = async (txt) => {
+    if(!txt.trim()) return;
+    const um = {role:"user",content:txt};
+    const nc = [...chat, um];
+    setChat(nc); setInp(""); setLoading(true);
+    const ctx = sel ? `\n[Prospect: ${sel.nm} | Pays: ${sel.co} | Statut: ${STATS.find(s=>s.v===sel.st)?.l} | CA: ${sel.ca}€ | Tags: ${(sel.tg||[]).join(",")} | Email: ${sel.em} | WhatsApp: ${sel.wa} | Instagram: ${sel.ig}]\n[Canal de communication: ${ch}]\n[Notes: ${sel.nt||"aucune"}]` : "\n[Aucun prospect sélectionné — mode conseil général]";
+    const msgs = nc.map(m => ({role:m.role, content:m===um ? ctx+"\n"+m.content : m.content}));
+    const reply = await askAI(msgs);
+    setChat(p => [...p, {role:"assistant",content:reply}]);
+    setLoading(false);
+  };
+
+  // ─── ACTIONS ───────────────────────────────────────────────
+  const logSend = (pr, channel, msg) => {
+    const entry = {id:Date.now(),pid:pr.id,pnm:pr.nm,ch:channel,msg:msg.substring(0,200),date:new Date().toISOString(),user:me?.nm||"Admin"};
+    setHist(p => [entry,...p]);
+    setDb(p => p.map(x => x.id===pr.id ? {...x, ints:[...(x.ints||[]),{date:entry.date,ch:channel,msg:msg.substring(0,80)}], st:x.st==="new"?"contacted":x.st} : x));
+    addN(`📨 ${channel} → ${pr.nm}`);
+  };
+  const openMail = (to, subj, body) => { window.open(`mailto:${to}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`); if(sel)logSend(sel,"email",body); };
+  const openWA = (num, msg) => { window.open(`https://wa.me/${(num||"").replace(/[^0-9+]/g,"")}?text=${encodeURIComponent(msg)}`); if(sel)logSend(sel,"whatsapp",msg); };
+  const openIG = (h) => { window.open(`https://instagram.com/${(h||"").replace("@","")}`); if(sel)logSend(sel,"instagram","DM"); };
+
+  const addFup = (p, days, note="") => {
+    const d = new Date(); d.setDate(d.getDate()+days);
+    setFups(prev => [...prev, {id:Date.now(),pid:p.id,pnm:p.nm,date:d.toISOString(),note:note||`Relance dans ${days}j`,ch,done:false}]);
+    addN(`🔔 Relance ${p.nm} dans ${days}j`);
+  };
+
+  const genNL = async () => {
+    if(!nlProds.length) return; setLoading(true);
+    const pl = nlProds.map(id=>PRODS.find(p=>p.id===id)).filter(Boolean).map(p=>`- ${p.nm} (${p.cat}): ${p.desc} — ${p.pr}${p.u}`).join("\n");
+    const r = await askAI([{role:"user",content:`Génère une newsletter email professionnelle pour L'Entrepôt du Chanvrier avec ces produits:\n${pl}\n\nInclus un titre accrocheur, un pitch par produit, et un call-to-action final.`}]);
+    setNlGen(r); setLoading(false);
+  };
+
+  // ─── PAPPERS ───────────────────────────────────────────────
+  const searchPap = async (pg=1) => {
+    if(!conn.pappers.key||!papQ)return; setPapLoad(true);
+    try {
+      let u = `https://api.pappers.fr/v2/recherche?api_token=${conn.pappers.key}&q=${encodeURIComponent(papQ)}&par_page=20&page=${pg}`;
+      Object.entries(papF).forEach(([k,v])=>{if(v.trim())u+=`&${k}=${encodeURIComponent(v.trim())}`;});
+      const r = await fetch(u); const d = await r.json();
+      setPapRes(pg===1?(d.resultats||[]):[...papRes,...(d.resultats||[])]);
+      setPapPg(pg);
+    } catch(e){addN("❌ Pappers: "+e.message);}
+    setPapLoad(false);
+  };
+  const importPap = (r) => {
+    setDb(p=>[...p,{id:Date.now()+Math.random(),nm:r.nom_entreprise||r.denomination||"?",co:"FR",em:r.siege?.email||"",wa:r.siege?.telephone||"",ig:"",st:"new",tg:["pappers"],sc:50,ca:0,nt:`SIREN:${r.siren||""} · NAF:${r.code_naf||""} · ${r.siege?.ville||""} · ${r.forme_juridique||""}`.trim(),ints:[],vn:[]}]);
+    addN(`📥 ${r.nom_entreprise||r.denomination} importé`);
+  };
+
+  // ─── FILE IMPORT ───────────────────────────────────────────
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]; if(!file)return;
+    setImpFile(file); setImpSt(`Lecture de ${file.name}...`);
+    const ext = file.name.split(".").pop().toLowerCase();
+    let raw = [];
+    try {
+      if(ext==="csv"||ext==="tsv"){raw=parseCSV(await file.text(),ext==="tsv"?"\t":null);}
+      else if(ext==="json"){const j=JSON.parse(await file.text());raw=Array.isArray(j)?j:(j.prospects||j.data||j.db||[j]);}
+      else if(ext==="pdf"){raw=await parsePDF(file);}
+      else{raw=parseCSV(await file.text());}
+      const cleaned = cleanData(raw);
+      setImpPrev(cleaned);
+      setImpSt(`✅ ${cleaned.length} prospects trouvés et nettoyés`);
+    }catch(err){setImpSt(`❌ ${err.message}`);setImpPrev([]);}
+  };
+  const parseCSV = (txt, delim=null) => {
+    const lines=txt.split("\n").map(l=>l.trim()).filter(Boolean);if(lines.length<2)return[];
+    if(!delim){const s=(lines[0].match(/;/g)||[]).length,c=(lines[0].match(/,/g)||[]).length,t=(lines[0].match(/\t/g)||[]).length;delim=t>c?"\t":s>c?";":",";}
+    const h=lines[0].split(delim).map(x=>x.replace(/"/g,"").trim().toLowerCase());
+    return lines.slice(1).map(l=>{const v=l.split(delim).map(x=>x.replace(/"/g,"").trim());const o={};h.forEach((k,i)=>{o[k]=v[i]||"";});return o;});
+  };
+  const parsePDF = (file) => new Promise((res,rej)=>{const r=new FileReader();r.onload=(e)=>{const t=new TextDecoder("utf-8",{fatal:false}).decode(e.target.result).replace(/[^\x20-\x7E\n\rÀ-ÿ]/g," ").replace(/\s+/g," ");const emails=t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g)||[];if(emails.length)res(emails.map(em=>({email:em,nom:em.split("@")[0].replace(/[._-]/g," ").replace(/\b\w/g,c=>c.toUpperCase())})));else rej(new Error("Aucune donnée trouvée dans le PDF"));};r.readAsArrayBuffer(file);});
+  const cleanData = (raw) => {
+    if(!Array.isArray(raw)||!raw.length)return[];
+    const fm={nm:["nom","name","entreprise","company","société","societe","raison_sociale","denomination","nom_entreprise","business"],em:["email","mail","e-mail","courriel","contact_email"],wa:["telephone","phone","tel","mobile","whatsapp","portable","phone_number"],ig:["instagram","ig","insta"],co:["pays","country","code_pays"],nt:["notes","note","commentaire","description"],ca:["ca","chiffre_affaires","revenue","turnover"],tg:["tags","tag","categorie","type","segment"]};
+    const mf=(o,ts)=>{for(const t of ts){const k=Object.keys(o).find(k=>k.toLowerCase().replace(/[^a-z]/g,"")===t.replace(/[^a-z]/g,""));if(k&&o[k])return String(o[k]).trim();}return"";};
+    const dc=(s)=>{const l=s.toLowerCase();if(l.includes("france")||l.startsWith("+33"))return"FR";if(l.includes("german")||l.startsWith("+49"))return"DE";if(l.includes("spain")||l.startsWith("+34"))return"ES";if(l.includes("ital")||l.startsWith("+39"))return"IT";if(l.includes("uk")||l.startsWith("+44"))return"UK";if(l.includes("belg")||l.startsWith("+32"))return"BE";return"FR";};
+    const seen=new Set();
+    return raw.map(o=>{
+      const nm=mf(o,fm.nm)||"Sans nom",em=mf(o,fm.em),wa=(mf(o,fm.wa)||"").replace(/[^0-9+]/g,""),ig=mf(o,fm.ig),co=dc(mf(o,fm.co)||wa),nt=mf(o,fm.nt),ca=parseFloat(mf(o,fm.ca))||0;
+      const tgR=mf(o,fm.tg);const tg=tgR?tgR.split(/[,;|]/).map(t=>t.trim().toLowerCase()).filter(Boolean):[];
+      const key=em||nm.toLowerCase();if(seen.has(key))return null;seen.add(key);
+      return{id:Date.now()+Math.random(),nm,co,em,wa,ig,st:"new",tg,sc:50,ca,nt,ints:[],vn:[]};
+    }).filter(Boolean);
+  };
+  const confirmImport = () => {
+    if(!impPrev.length)return;
+    const eEm=new Set(db.map(p=>p.em).filter(Boolean));const eNm=new Set(db.map(p=>p.nm.toLowerCase()));
+    const nw=impPrev.filter(p=>{if(p.em&&eEm.has(p.em))return false;if(eNm.has(p.nm.toLowerCase()))return false;return true;});
+    const nt=[...new Set(nw.flatMap(p=>p.tg))].filter(t=>t&&!tags.includes(t));
+    if(nt.length)setTags(p=>[...p,...nt]);
+    setDb(p=>[...p,...nw]);
+    addN(`📥 ${nw.length} importés (${impPrev.length-nw.length} doublons)`);
+    setImpPrev([]);setImpFile(null);setImpSt(`✅ ${nw.length} ajoutés au CRM`);
+  };
+
+  // Voice
+  const startRec = async () => {try{const s=await navigator.mediaDevices.getUserMedia({audio:true});mrRef.current=new MediaRecorder(s);ckRef.current=[];mrRef.current.ondataavailable=e=>ckRef.current.push(e.data);mrRef.current.onstop=()=>{const b=new Blob(ckRef.current,{type:"audio/webm"});const u=URL.createObjectURL(b);if(sel)setDb(p=>p.map(x=>x.id===sel.id?{...x,vn:[...(x.vn||[]),{id:Date.now(),url:u,date:new Date().toISOString()}]}:x));s.getTracks().forEach(t=>t.stop());addN("🎙️ Note vocale enregistrée");};mrRef.current.start();setRec(true);}catch{addN("❌ Micro non accessible");}};
+  const stopRec = () => {if(mrRef.current&&rec){mrRef.current.stop();setRec(false);}};
+
+  // PDF product sheet
+  const genPDF = (p) => {const c=`╔═══════════════════════════════════════╗\n║  L'ENTREPÔT DU CHANVRIER — FICHE      ║\n╚═══════════════════════════════════════╝\n\n${p.ic}  ${p.nm}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCatégorie: ${p.cat}\nTHC: ${p.thc||"N/A"} | CBD: ${p.cbd||"N/A"} | ${p.mol||""}\nPrix grossiste: ${p.pr} ${p.u}\n\n${p.desc}\n\n✓ Fabriqué en France  ✓ Analyses LEAF\n✓ THC conforme EU     ✓ Livraison 24-48h\n\n📧 commercial@lentrepotduchanvrier.com\n🌐 lentrepotduchanvrier.com`;const b=new Blob([c],{type:"text/plain"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`fiche-${p.nm.replace(/\s/g,"-").toLowerCase()}.txt`;a.click();};
+
+  // ─── STYLES ────────────────────────────────────────────────
+  const G = {background:"rgba(10,16,29,0.82)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:"1px solid rgba(52,211,153,0.08)",borderRadius:16};
+  const GC = {...G, padding:16, marginBottom:12};
+  const I = {background:"rgba(15,23,42,0.9)",color:"#e2e8f0",border:"1px solid rgba(52,211,153,0.12)",borderRadius:10,padding:"11px 14px",fontSize:13,fontFamily:"'DM Sans',sans-serif",width:"100%",outline:"none"};
+  const BG = {background:"linear-gradient(135deg,#10b981,#059669)",color:"#000",border:"none",borderRadius:10,padding:"11px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:"0 4px 15px rgba(16,185,129,0.25)"};
+  const BO = {background:"transparent",color:"#94a3b8",border:"1px solid rgba(52,211,153,0.12)",borderRadius:8,padding:"8px 12px",fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"};
+  const bdg = (c) => ({display:"inline-block",padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:c+"18",color:c,marginRight:4,marginBottom:3});
+  const dot = (s) => ({width:9,height:9,borderRadius:"50%",display:"inline-block",background:s==="connected"?"#22c55e":s==="testing"?"#fbbf24":s==="error"?"#f87171":"#334155",boxShadow:s==="connected"?"0 0 8px #22c55e55":"none"});
+  const SecTitle = ({c,ic,t}) => <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><div style={{width:40,height:40,borderRadius:12,background:c+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{ic}</div><h2 style={{fontSize:20,fontWeight:800,color:c,margin:0,letterSpacing:-0.5}}>{t}</h2></div>;
+
+  // ─── LOGIN ─────────────────────────────────────────────────
+  const doLogin = () => {
+    const found = users.find(usr => usr.em === lEm && usr.pw === lPw);
+    if (found) { setMe(found); setLogged(true); setLErr(""); }
+    else setLErr("❌ Identifiants incorrects");
+  };
+
+  if (!logged) return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#020409 0%,#0a1628 40%,#04120a 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:"-20%",left:"-10%",width:"60%",height:"60%",background:"radial-gradient(ellipse,rgba(16,185,129,0.07) 0%,transparent 70%)",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",bottom:"-20%",right:"-10%",width:"50%",height:"50%",background:"radial-gradient(ellipse,rgba(96,165,250,0.05) 0%,transparent 70%)",pointerEvents:"none"}}/>
+      <div style={{width:380,padding:40,...G,boxShadow:"0 30px 80px rgba(0,0,0,0.6)"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:52,marginBottom:6,filter:"drop-shadow(0 0 25px rgba(16,185,129,0.3))"}}>🌿</div>
+          <h1 style={{color:"#e2e8f0",fontSize:30,fontWeight:800,margin:0,letterSpacing:-1}}>GEOSISTE</h1>
+          <p style={{color:"#475569",fontSize:11,marginTop:6,fontFamily:"'DM Mono',monospace",letterSpacing:2.5}}>AGENT COMMERCIAL IA · v10</p>
         </div>
-      </div>}
+        <input value={lEm} onChange={e=>setLEm(e.target.value)} placeholder="Email" style={{...I,marginBottom:10}}/>
+        <input type="password" value={lPw} onChange={e=>setLPw(e.target.value)} placeholder="Mot de passe" style={{...I,marginBottom:16}} onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+        {lErr && <p style={{color:"#f87171",fontSize:11,marginBottom:10,textAlign:"center"}}>{lErr}</p>}
+        <button onClick={doLogin} style={{...BG,width:"100%",padding:14,fontSize:14,letterSpacing:0.5}}>Se connecter</button>
+        <p style={{textAlign:"center",color:"#1e293b",fontSize:9,marginTop:18,fontFamily:"'DM Mono',monospace"}}>admin@geosiste.com · geosiste2024</p>
+      </div>
+    </div>
+  );
 
-      {/* HEADER */}
-      <div style={{background:"#0a1020",borderBottom:"1px solid #1a2332",padding:"8px 10px 5px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-          <div style={{display:"flex",alignItems:"center",gap:5}}>
-            <div style={{width:22,height:22,borderRadius:5,background:"linear-gradient(135deg,#10B981,#059669)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#fff"}}>G</div>
-            <span style={{fontSize:12,fontWeight:900,color:"#10B981"}}>GEOSISTE</span>
-            <span style={{fontSize:7,color:"#475569"}}>{db.length}p | {totR>0?`${totR.toLocaleString()}€`:""}</span>
-          </div>
-          <div style={{display:"flex",gap:3,alignItems:"center"}}>
-            <div title={supaMsg} style={{width:5,height:5,borderRadius:"50%",background:supaOk?"#10B981":SUPA_READY?"#F59E0B":"#64748b",boxShadow:supaOk?"0 0 4px #10B981":"none"}}/>
-            {(ld||autoOn)&&<div style={{width:5,height:5,borderRadius:"50%",background:autoOn?"#F59E0B":"#10B981",boxShadow:`0 0 6px ${autoOn?"#F59E0B":"#10B981"}`,animation:"pulse 1s infinite"}}/>}
-            <button onClick={()=>setVw("alerts")} style={{position:"relative",background:"none",border:"none",cursor:"pointer",fontSize:14,padding:2}}>🔔{unread>0&&<span style={{position:"absolute",top:-3,right:-4,width:12,height:12,borderRadius:"50%",background:"#EF4444",color:"#fff",fontSize:7,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{unread}</span>}</button>
-          </div>
+  // Helper for going to agent with prospect
+  const goAgent = (prospect) => { setSel(prospect); setSection("agent"); setSubPage(""); setChat([]); };
+
+  // ─── RENDER ────────────────────────────────────────────────
+  return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#020409 0%,#0a1628 40%,#04120a 100%)",color:"#e2e8f0",fontFamily:"'DM Sans',sans-serif",fontSize:13,maxWidth:520,margin:"0 auto",position:"relative",paddingBottom:70}}>
+
+      {/* BG ambient */}
+      <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,pointerEvents:"none",zIndex:0}}>
+        <div style={{position:"absolute",top:"8%",right:"5%",width:300,height:300,background:"radial-gradient(ellipse,rgba(16,185,129,0.04) 0%,transparent 70%)"}}/>
+        <div style={{position:"absolute",bottom:"15%",left:"0%",width:250,height:250,background:"radial-gradient(ellipse,rgba(96,165,250,0.03) 0%,transparent 70%)"}}/>
+      </div>
+
+      <div style={{position:"relative",zIndex:1}}>
+
+      {/* ═══ HEADER ═══ */}
+      <div style={{padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(52,211,153,0.08)",background:"rgba(2,4,9,0.7)",backdropFilter:"blur(10px)",position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:24,filter:"drop-shadow(0 0 8px rgba(16,185,129,0.4))"}}>🌿</span>
+          <div><span style={{fontWeight:800,fontSize:16,letterSpacing:-0.5}}>GEOSISTE</span><span style={{fontSize:9,color:"#334155",marginLeft:6,fontFamily:"'DM Mono',monospace"}}>v10</span></div>
         </div>
-        <div style={{display:"flex",gap:1,overflowX:"auto"}}>
-          {[{k:"dash",l:"📊 Dashboard"},{k:"auto",l:"🚀 Auto"},{k:"agent",l:"🤖 Chat"},{k:"crm",l:"📋 CRM"},{k:"map",l:"🗺️"},{k:"prods",l:"🛒"},{k:"connect",l:"🔗"}].map(v=>(
-            <button key={v.k} onClick={()=>setVw(v.k)} style={{flex:1,padding:"4px 1px",borderRadius:5,fontSize:8,fontWeight:vw===v.k?700:400,cursor:"pointer",background:vw===v.k?"#10B981":"transparent",color:vw===v.k?"#000":"#475569",border:vw===v.k?"none":"1px solid #1a2332",fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap"}}>{v.l}</button>
-          ))}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{display:"flex",gap:4}} title="Connexions">{["claude","pappers","email","whatsapp","instagram"].map(k=><div key={k} style={dot(conn[k].status)} title={k}/>)}</div>
+          <button onClick={()=>setShowNotifs(!showNotifs)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,padding:4,position:"relative"}}>🔔{unread>0&&<span style={{position:"absolute",top:-2,right:-2,background:"#f87171",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>{unread}</span>}</button>
+          <div style={{width:30,height:30,borderRadius:10,background:"linear-gradient(135deg,#10b981,#059669)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#000"}} onClick={()=>{setLogged(false);setMe(null);}}>{me?.nm?.[0]||"A"}</div>
         </div>
       </div>
 
-      {/* ═══ DASHBOARD ═══ */}
-      {vw==="dash"&&<div style={{padding:"8px 10px",height:"calc(100vh - 72px)",overflowY:"auto"}}>
-        {/* KPIs */}
-        <div style={{display:"flex",gap:3,marginBottom:8,flexWrap:"wrap"}}>
-          {[{l:"Prospects",v:db.length,c:"#64748b"},{l:"Contactés",v:db.filter(p=>p.st!=="prospect").length,c:"#F59E0B"},{l:"🔥 Chauds",v:db.filter(p=>["hot","ready"].includes(p.st)).length,c:"#EF4444"},{l:"Clients",v:db.filter(p=>p.st==="client").length,c:"#06B6D4"},{l:"Revenue",v:totR>0?`${(totR/1000).toFixed(1)}k€`:"0€",c:"#10B981"},{l:"Conv.",v:convRate+"%",c:"#8B5CF6"}].map((k,i)=>(
-            <div key={i} style={{flex:1,minWidth:48,background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:"5px 4px",textAlign:"center"}}>
-              <div style={{fontSize:6,color:"#475569",textTransform:"uppercase"}}>{k.l}</div>
-              <div style={{fontFamily:"'JetBrains Mono'",fontSize:13,fontWeight:700,color:k.c}}>{k.v}</div>
-            </div>
-          ))}
-        </div>
-        {/* Pipeline */}
-        <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:4}}>Pipeline</div>
-        <div style={{display:"flex",gap:1,marginBottom:8}}>
-          {STS.map(s=>{const n=db.filter(p=>p.st===s.v).length;return <div key={s.v} style={{flex:1,background:s.c+"10",borderRadius:4,padding:"3px 1px",textAlign:"center"}}><div style={{fontFamily:"'JetBrains Mono'",fontSize:12,fontWeight:700,color:s.c}}>{n}</div><div style={{fontSize:6,color:s.c}}>{s.i}</div></div>;})}
-        </div>
-        {/* Conv by country */}
-        <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:4}}>Conversion par pays</div>
-        {convByCountry.slice(0,6).map(c=><div key={c.co} style={{display:"flex",alignItems:"center",gap:4,marginBottom:2}}>
-          <span style={{fontSize:10}}>{FL[c.co]||"🌍"}</span>
-          <span style={{fontSize:9,width:55,color:"#94a3b8"}}>{c.co}</span>
-          <div style={{flex:1,height:10,background:"#0a1020",borderRadius:4,overflow:"hidden"}}><div style={{width:`${c.rate}%`,height:"100%",borderRadius:4,background:c.rate>50?"#10B981":c.rate>20?"#F59E0B":"#64748b"}}/></div>
-          <span style={{fontFamily:"'JetBrains Mono'",fontSize:8,color:"#475569",width:28,textAlign:"right"}}>{c.rate}%</span>
-          <span style={{fontSize:7,color:"#334155"}}>{c.conv}/{c.total}</span>
-        </div>)}
-        {/* Conv by channel */}
-        <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginTop:8,marginBottom:4}}>Par canal</div>
-        <div style={{display:"flex",gap:3}}>
-          {convByCh.map(c=><div key={c.ch} style={{flex:1,background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:"6px 4px",textAlign:"center"}}>
-            <div style={{fontSize:14}}>{c.ch==="email"?"📧":c.ch==="whatsapp"?"💬":"📸"}</div>
-            <div style={{fontFamily:"'JetBrains Mono'",fontSize:12,fontWeight:700,color:"#e2e8f0"}}>{c.total}</div>
-            <div style={{fontSize:7,color:"#475569"}}>{c.hot} intéressés</div>
+      {/* Notifs dropdown */}
+      {showNotifs&&<div style={{position:"absolute",top:56,right:12,width:300,maxHeight:350,overflowY:"auto",...G,zIndex:999,boxShadow:"0 20px 60px rgba(0,0,0,0.7)",padding:0}}>
+        <div style={{padding:"10px 14px",borderBottom:"1px solid rgba(52,211,153,0.08)",display:"flex",justifyContent:"space-between"}}><strong style={{fontSize:12,color:"#34d399"}}>Notifications</strong><button onClick={()=>{setNotifs(p=>p.map(n=>({...n,read:true})));setShowNotifs(false);}} style={{...BO,padding:"2px 8px",fontSize:9}}>Tout lire</button></div>
+        {notifs.length===0?<p style={{padding:20,fontSize:11,color:"#475569",textAlign:"center"}}>Aucune notification</p>:notifs.slice(0,15).map(n=><div key={n.id} style={{padding:"8px 14px",borderBottom:"1px solid rgba(15,23,42,0.5)",background:n.read?"transparent":"rgba(16,185,129,0.03)"}} onClick={()=>setNotifs(p=>p.map(x=>x.id===n.id?{...x,read:true}:x))}><div style={{fontSize:11}}>{n.msg}</div><div style={{fontSize:9,color:"#334155",marginTop:2}}>{new Date(n.date).toLocaleString("fr")}</div></div>)}
+      </div>}
+
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* ═══ SECTION: DASHBOARD ═══ */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {section==="dash"&&!subPage&&<div style={{padding:16}}>
+        {/* Quick stats */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+          {[{v:totCA.toLocaleString()+"€",l:"CA Total",c:"#34d399",ic:"💰"},{v:db.length,l:"Prospects",c:"#60a5fa",ic:"👥"},{v:db.filter(p=>p.st==="client").length,l:"Clients",c:"#22c55e",ic:"🤝"},{v:fups.filter(f=>!f.done).length,l:"Relances",c:"#fbbf24",ic:"🔔"}].map((k,i)=>
+          <div key={i} style={{...GC,textAlign:"center",padding:18,cursor:"pointer"}} onClick={()=>{if(i===1||i===2)setSection("crm");if(i===3){setSection("tools");setSubPage("followups");}}}>
+            <div style={{fontSize:14,marginBottom:4}}>{k.ic}</div>
+            <div style={{fontSize:24,fontWeight:800,color:k.c,lineHeight:1}}>{k.v}</div>
+            <div style={{fontSize:10,color:"#475569",marginTop:4}}>{k.l}</div>
           </div>)}
         </div>
-        {/* Top products */}
-        <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginTop:8,marginBottom:4}}>⭐ Produits demandés</div>
-        {topP.length===0?<div style={{fontSize:9,color:"#334155"}}>Lancez l'agent pour voir les stats</div>:
-        topP.slice(0,6).map(([p,c],i)=><div key={p} style={{display:"flex",alignItems:"center",gap:3,marginBottom:2}}>
-          <span style={{fontSize:8,color:i<3?"#10B981":"#475569",width:10}}>{i+1}</span>
-          <span style={{fontSize:9,color:"#e2e8f0",flex:1}}>{p}</span>
-          <div style={{width:50,height:6,background:"#0a1020",borderRadius:3}}><div style={{width:`${(c/topP[0][1])*100}%`,height:"100%",borderRadius:3,background:i<3?"#10B981":"#1e293b"}}/></div>
-          <span style={{fontFamily:"'JetBrains Mono'",fontSize:7,color:"#475569"}}>{c}</span>
-        </div>)}
-        {/* Follow-ups */}
-        <div style={{fontSize:10,fontWeight:700,color:"#F59E0B",marginTop:8,marginBottom:4}}>📅 Relances en attente ({followUpsDue.length})</div>
-        {followUpsDue.slice(0,5).map(p=>{const seq=SEQUENCES.find(s=>s.id===p.seq);const step=seq?.steps[p.seqStep];return <div key={p.id} onClick={()=>{setSel(p);setVw("agent");}} style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:"4px 8px",marginBottom:2,cursor:"pointer",display:"flex",justifyContent:"space-between"}}>
-          <span style={{fontSize:9}}>{FL[p.co]}{p.nm}</span>
-          <span style={{fontSize:8,color:"#F59E0B"}}>{step?.label} (J+{step?.day})</span>
-        </div>;})}
-      </div>}
 
-      {/* ═══ AUTO ═══ */}
-      {vw==="auto"&&<div style={{padding:"8px 10px",height:"calc(100vh - 72px)",overflowY:"auto"}}>
-        <div style={{background:autoOn?"#0f172a":"#080d17",borderRadius:8,border:autoOn?"1px solid #F59E0B44":"1px solid #1a2332",padding:10,marginBottom:6}}>
-          <div style={{fontSize:12,fontWeight:800,color:autoOn?"#F59E0B":"#e2e8f0",marginBottom:6}}>🚀 Agent Autonome + Séquences</div>
-          {!autoOn&&<>
-            <div style={{display:"flex",gap:2,marginBottom:4}}>{["email","whatsapp","instagram"].map(c=><button key={c} onClick={()=>setACh(c)} style={{flex:1,padding:5,borderRadius:5,fontSize:9,fontWeight:600,cursor:"pointer",background:autoCh===c?(c==="email"?"#2563EB":c==="whatsapp"?"#16a34a":"#db2777"):"#080d17",color:autoCh===c?"#fff":"#475569",border:autoCh===c?"none":"1px solid #1a2332"}}>{c==="email"?"📧":c==="whatsapp"?"💬":"📸"}</button>)}</div>
-            <div style={{display:"flex",gap:2,marginBottom:4}}>{[{v:"all",l:`🎯 Tous (${db.filter(p=>!["client","lost"].includes(p.st)).length})`},{v:"mol",l:`🧪 Mol. (${db.filter(p=>p.ml&&p.st!=="client").length})`},{v:"hi",l:`⚡ 85+ (${db.filter(p=>calcScore(p)>=85&&p.st!=="client").length})`}].map(f=><button key={f.v} onClick={()=>setATgt(f.v)} style={{flex:1,padding:4,borderRadius:5,fontSize:8,fontWeight:600,cursor:"pointer",background:autoTgt===f.v?"#10B98122":"#080d17",color:autoTgt===f.v?"#10B981":"#475569",border:"1px solid #1a2332"}}>{f.l}</button>)}</div>
-            <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}><span style={{fontSize:8,color:"#64748b"}}>⏱️</span><input type="range" min={2} max={30} value={autoSpd} onChange={e=>setASpd(+e.target.value)} style={{flex:1,accentColor:"#10B981"}}/><span style={{fontFamily:"'JetBrains Mono'",fontSize:9,color:"#10B981"}}>{autoSpd}s</span></div>
-            <div style={{fontSize:8,color:"#475569",marginBottom:6}}>Séquence auto: {db.some(p=>p.ml)?"Molécules (5 étapes)":"Standard (5 étapes)"} — relances J+0, J+3, J+7, J+14, J+30</div>
-          </>}
-          <button onClick={autoOn?()=>{autoRef.current=false;setAutoOn(false);}:startAuto} style={{width:"100%",padding:10,borderRadius:8,fontSize:13,fontWeight:900,cursor:"pointer",background:autoOn?"#EF4444":"linear-gradient(135deg,#F59E0B,#D97706)",color:autoOn?"#fff":"#000",border:"none"}}>{autoOn?"⏹️ ARRÊTER":"🚀 LANCER"}</button>
-        </div>
-        <div style={{display:"flex",gap:2,marginBottom:6}}>{[{l:"Envoyés",v:autoSt.sent,c:"#3B82F6"},{l:"🔥",v:autoSt.hot,c:"#EF4444"},{l:"💰",v:autoSt.ready,c:"#10B981"},{l:"❌",v:autoSt.err,c:"#64748b"}].map((s,i)=><div key={i} style={{flex:1,background:"#080d17",borderRadius:5,border:"1px solid #1a2332",padding:"3px",textAlign:"center"}}><div style={{fontFamily:"'JetBrains Mono'",fontSize:12,fontWeight:700,color:s.c}}>{s.v}</div><div style={{fontSize:6,color:"#475569"}}>{s.l}</div></div>)}</div>
-        <div style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:6,maxHeight:250,overflowY:"auto"}}>{autoLog.slice(0,30).map((l,i)=><div key={i} style={{fontSize:8,color:l.startsWith("✅")?"#10B981":l.startsWith("❌")?"#EF4444":"#94a3b8",padding:"2px 0",borderBottom:"1px solid #0d1520"}}>{l}</div>)}</div>
-      </div>}
-
-      {/* ═══ AGENT CHAT ═══ */}
-      {vw==="agent"&&<div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 72px)"}}>
-        <div style={{padding:"4px 10px",display:"flex",gap:2,borderBottom:"1px solid #1a2332",alignItems:"center"}}>
-          {["email","whatsapp","instagram"].map(c=><button key={c} onClick={()=>setCh(c)} style={{padding:"3px 6px",borderRadius:4,fontSize:8,fontWeight:600,cursor:"pointer",background:ch===c?(c==="email"?"#2563EB":c==="whatsapp"?"#16a34a":"#db2777"):"transparent",color:ch===c?"#fff":"#475569",border:ch===c?"none":"1px solid #1a2332"}}>{c==="email"?"📧":c==="whatsapp"?"💬":"📸"}</button>)}
-          <select value={sel?.id||""} onChange={e=>{setSel(db.find(p=>p.id===+e.target.value)||null);setChat([]);}} style={{...fs,flex:1,fontSize:8}}><option value="">Prospect...</option>{db.sort((a,b)=>calcScore(b)-calcScore(a)).map(p=><option key={p.id} value={p.id}>{FL[p.co]||"🌍"}{p.nm}[{calcScore(p)}]</option>)}</select>
-        </div>
-        {sel&&<div style={{padding:"2px 10px",background:"#0f172a",borderBottom:"1px solid #1a2332",fontSize:7,color:"#475569",display:"flex",justifyContent:"space-between"}}>
-          <span><strong style={{color:"#e2e8f0"}}>{sel.nm}</strong> • {LANG_NAMES[LANG_MAP[sel.co]||"en"]} • {SEGMENTS[sel.sg]?.label||sel.sg} • {sel.ints.length}💬</span>
-          <div style={{display:"flex",gap:2}}>
-            {sel.em&&ch==="email"&&<button onClick={()=>openE(sel.em,"Partenariat CBD — Geosiste",chat.filter(m=>m.role==="assistant").pop()?.content||"")} style={{background:"#2563EB33",color:"#60a5fa",border:"none",borderRadius:3,padding:"0px 4px",fontSize:6,cursor:"pointer"}}>📧Envoyer</button>}
-            {ch==="whatsapp"&&<button onClick={()=>openW(sel.wa||waNum||"",chat.filter(m=>m.role==="assistant").pop()?.content||"")} style={{background:"#16a34a33",color:"#4ade80",border:"none",borderRadius:3,padding:"0px 4px",fontSize:6,cursor:"pointer"}}>💬Envoyer</button>}
+        {/* Agent IA quick access */}
+        <div style={{...GC,padding:20,borderLeft:"3px solid #34d399",cursor:"pointer"}} onClick={()=>setSection("agent")}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <span style={{fontSize:28}}>🤖</span>
+            <div><div style={{fontSize:16,fontWeight:800,color:"#34d399"}}>Agent Commercial IA</div><div style={{fontSize:10,color:"#475569"}}>{PRODS.length} produits · Multi-canal · Détection Pinaca</div></div>
           </div>
-        </div>}
-        <div style={{flex:1,overflowY:"auto",padding:"6px 10px"}}>
-          {chat.length===0&&<div style={{textAlign:"center",marginTop:20}}>
-            <div style={{fontSize:28,marginBottom:4}}>🤖</div>
-            <div style={{fontSize:11,fontWeight:700,color:"#10B981",marginBottom:6}}>Agent Geosiste</div>
-            <div style={{fontSize:8,color:"#475569",marginBottom:8}}>50 produits • Multi-langue auto • Détection Pinaca • Segmentation</div>
-            {["Rédige un pitch "+(ch)+" pour "+(sel?.nm||"un prospect"),"Compare Beldia CSA et Ice O Lator CSA","Prix de nos Grenade Vape 10-OH ?","Ce hash à 0.20€/g ultra puissant, safe ?","Quels produits pour un buraliste ?"].map((q,i)=><button key={i} onClick={()=>send(q)} style={{display:"block",width:"100%",padding:"6px 8px",marginBottom:2,borderRadius:6,background:"#080d17",border:"1px solid #1a2332",color:"#94a3b8",fontSize:9,cursor:"pointer",textAlign:"left"}}>{q}</button>)}
-          </div>}
-          {chat.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",marginBottom:4}}>
-            <div style={{maxWidth:"85%",padding:"7px 10px",borderRadius:10,background:m.role==="user"?"#10B981":"#080d17",color:m.role==="user"?"#000":"#e2e8f0",border:m.role==="user"?"none":"1px solid #1a2332",fontSize:11,lineHeight:1.5,whiteSpace:"pre-wrap",borderBottomRightRadius:m.role==="user"?2:10,borderBottomLeftRadius:m.role==="user"?10:2}}>{m.content}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>Pitchs personnalisés, réponses aux objections, qualification prospects, devis automatiques, détection de produits frauduleux...</div>
+          <div style={{...BG,textAlign:"center",marginTop:12,fontSize:13}}>▶ Ouvrir l'Agent IA</div>
+        </div>
+
+        {/* Quick actions */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+          {[{l:"Pappers",ic:"🏢",c:"#818cf8",go:()=>{setSection("tools");setSubPage("pappers");}},{l:"Import",ic:"📥",c:"#f472b6",go:()=>{setSection("tools");setSubPage("import");}},{l:"Newsletter",ic:"📰",c:"#a78bfa",go:()=>{setSection("tools");setSubPage("newsletter");}}].map((a,i)=>
+          <div key={i} style={{...GC,textAlign:"center",padding:14,cursor:"pointer"}} onClick={a.go}>
+            <div style={{fontSize:20,marginBottom:4}}>{a.ic}</div>
+            <div style={{fontSize:11,fontWeight:600,color:a.c}}>{a.l}</div>
           </div>)}
-          {ld&&<div style={{display:"flex",gap:3,padding:6}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#10B981",animation:`pulse 1s ${i*.2}s infinite`}}/>)}</div>}
-          <div ref={chatEnd}/>
         </div>
-        <div style={{padding:"5px 10px 8px",borderTop:"1px solid #1a2332",display:"flex",gap:3}}>
-          <input value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send(inp)} placeholder="Message..." style={{flex:1,padding:"8px 10px",borderRadius:8,background:"#080d17",border:"1px solid #1a2332",color:"#e2e8f0",fontSize:11,outline:"none"}}/>
-          <button onClick={()=>send(inp)} disabled={ld} style={{padding:"8px 12px",borderRadius:8,background:ld?"#1a2332":"#10B981",color:ld?"#475569":"#000",border:"none",fontWeight:800,cursor:ld?"wait":"pointer",fontSize:13}}>→</button>
-        </div>
-      </div>}
 
-      {/* ═══ CRM ═══ */}
-      {vw==="crm"&&<div style={{padding:"6px 10px",height:"calc(100vh - 72px)",overflowY:"auto"}}>
-        <div style={{display:"flex",gap:2,marginBottom:3}}>
-          <input value={srch} onChange={e=>setSrch(e.target.value)} placeholder="🔍" style={{...fs,flex:1}}/>
-          <button onClick={()=>setFM(!fM)} style={{...fs,background:fM?"#eab30822":"#080d17",color:fM?"#eab308":"#475569",cursor:"pointer"}}>🧪</button>
-          <select value={fS} onChange={e=>setFS(e.target.value)} style={{...fs,width:55}}><option value="all">Statut</option>{STS.map(s=><option key={s.v} value={s.v}>{s.i}</option>)}</select>
-          <select value={fC} onChange={e=>setFC(e.target.value)} style={{...fs,width:55}}><option value="all">🌍</option>{COUNTRIES.map(c=><option key={c} value={c}>{FL[c]||""}</option>)}</select>
-        </div>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-          <span style={{fontSize:8,color:"#475569"}}>{filtered.length}/{db.length}</span>
-          <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"2px 6px",borderRadius:4,background:showAdd?"#EF444422":"#10B98122",color:showAdd?"#EF4444":"#10B981",border:"none",fontSize:8,fontWeight:700,cursor:"pointer"}}>{showAdd?"✕":"+ Ajouter"}</button>
-        </div>
-        {showAdd&&<div style={{background:"#0f172a",borderRadius:6,border:"1px solid #10B98133",padding:8,marginBottom:4}} onClick={e=>e.stopPropagation()}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
-            <input value={af.nm} onChange={e=>setAf(p=>({...p,nm:e.target.value}))} placeholder="Nom *" style={{...fs,fontSize:8,gridColumn:"1/3"}}/>
-            <input value={af.co} onChange={e=>setAf(p=>({...p,co:e.target.value}))} placeholder="Pays" style={{...fs,fontSize:8}}/>
-            <input value={af.ct} onChange={e=>setAf(p=>({...p,ct:e.target.value}))} placeholder="Ville" style={{...fs,fontSize:8}}/>
-            <input value={af.em} onChange={e=>setAf(p=>({...p,em:e.target.value}))} placeholder="Email" style={{...fs,fontSize:8}}/>
-            <input value={af.ph} onChange={e=>setAf(p=>({...p,ph:e.target.value}))} placeholder="Téléphone" style={{...fs,fontSize:8}}/>
-            <input value={af.web} onChange={e=>setAf(p=>({...p,web:e.target.value}))} placeholder="Site" style={{...fs,fontSize:8}}/>
-            <input value={af.wa} onChange={e=>setAf(p=>({...p,wa:e.target.value}))} placeholder="WhatsApp" style={{...fs,fontSize:8}}/>
-            <input value={af.ig} onChange={e=>setAf(p=>({...p,ig:e.target.value}))} placeholder="Instagram" style={{...fs,fontSize:8}}/>
-            <input value={af.li} onChange={e=>setAf(p=>({...p,li:e.target.value}))} placeholder="LinkedIn" style={{...fs,fontSize:8}}/>
-            <input value={af.tp} onChange={e=>setAf(p=>({...p,tp:e.target.value}))} placeholder="Type" style={{...fs,fontSize:8}}/>
-            <input value={af.pr} onChange={e=>setAf(p=>({...p,pr:e.target.value}))} placeholder="Produits (CBD,CSA...)" style={{...fs,fontSize:8,gridColumn:"1/3"}}/>
-          </div>
-          <button onClick={addP} style={{width:"100%",marginTop:4,padding:5,borderRadius:5,background:af.nm?"#10B981":"#1a2332",color:af.nm?"#000":"#475569",border:"none",fontSize:9,fontWeight:700,cursor:af.nm?"pointer":"not-allowed"}}>✅ Ajouter</button>
-        </div>}
-        {filtered.map(p=>{const s=STS.find(x=>x.v===p.st)||STS[0];const isO=sel?.id===p.id;const dsc=calcScore(p);
-        return <div key={p.id} onClick={()=>setSel(isO?null:p)} style={{background:"#080d17",borderRadius:6,border:isO?"1px solid #10B981":"1px solid #1a2332",padding:"6px 8px",marginBottom:3,cursor:"pointer"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",gap:4,alignItems:"center"}}>
-              <span style={{fontSize:10}}>{FL[p.co]||"🌍"}</span>
-              <div><div style={{fontWeight:700,fontSize:10}}>{p.nm}{p.ml&&<span style={{fontSize:6,color:"#eab308",marginLeft:2}}>🧪</span>}</div>
-              <div style={{fontSize:7,color:"#475569"}}>{p.tp}{p.ct?` • ${p.ct}`:""} • {LANG_NAMES[LANG_MAP[p.co]||"en"]}</div></div>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1}}>
-              <div style={{display:"flex",gap:2,alignItems:"center"}}>
-                <span style={{fontFamily:"'JetBrains Mono'",fontSize:8,fontWeight:700,color:dsc>=85?"#10B981":dsc>=70?"#F59E0B":"#64748b"}}>{dsc}</span>
-                <span style={{fontSize:7,color:s.c,background:s.c+"15",padding:"0px 3px",borderRadius:4}}>{s.i}</span>
-              </div>
-              {p.revenue>0&&<span style={{fontSize:7,color:"#10B981",fontWeight:600}}>{p.revenue.toLocaleString()}€</span>}
-            </div>
-          </div>
-          {isO&&<div style={{marginTop:4,paddingTop:4,borderTop:"1px solid #1a2332"}}>
-            {/* CONTACT CARD */}
-            {editId!==p.id?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 6px",fontSize:8,color:"#64748b",marginBottom:3}}>
-              <div>🌐 <span style={{color:"#60a5fa"}}>{p.web||"—"}</span></div><div>📧 {p.em||"—"}</div>
-              <div>📞 {p.ph||"—"}</div><div>💬 {p.wa||"—"}</div>
-              <div>📸 {p.ig?`@${p.ig}`:"—"}</div><div>🔗 {p.li||"—"}</div>
-              <div>📏 {p.sz} | 💰 {p.ca}</div><div>🎯 {SEGMENTS[p.sg]?.label||"—"}</div>
-              <div style={{gridColumn:"1/3"}}>📅 Dernier contact: <strong style={{color:p.last?"#e2e8f0":"#EF4444"}}>{p.last||"Jamais"}</strong></div>
-            </div>:
-            /* EDIT MODE */
-            <div style={{background:"#0f172a",borderRadius:4,padding:6,marginBottom:3,border:"1px solid #10B98133"}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
-                {[{k:"em",ph:"Email"},{k:"ph",ph:"Téléphone"},{k:"wa",ph:"WhatsApp"},{k:"ig",ph:"Instagram"},{k:"li",ph:"LinkedIn"},{k:"web",ph:"Site web"}].map(f=>
-                  <input key={f.k} defaultValue={p[f.k]||""} placeholder={f.ph} onBlur={e=>editField(p.id,f.k,e.target.value)} style={{...fs,fontSize:7,padding:"3px 5px"}}/>
-                )}
-                <select defaultValue={p.sz} onChange={e=>editField(p.id,"sz",e.target.value)} style={{...fs,fontSize:7,padding:"3px"}}>{SIZES.map(s=><option key={s}>{s}</option>)}</select>
-                <select defaultValue={p.ca} onChange={e=>editField(p.id,"ca",e.target.value)} style={{...fs,fontSize:7,padding:"3px"}}>{CA_R.map(c=><option key={c}>{c}</option>)}</select>
-                <textarea defaultValue={p.nt||""} placeholder="Notes..." onBlur={e=>editField(p.id,"nt",e.target.value)} style={{...fs,gridColumn:"1/3",height:30,resize:"vertical",fontSize:7,boxSizing:"border-box"}}/>
-              </div>
-              <button onClick={e=>{e.stopPropagation();setEditId(null);}} style={{width:"100%",marginTop:3,padding:3,borderRadius:3,background:"#10B981",color:"#000",border:"none",fontSize:7,fontWeight:700,cursor:"pointer"}}>✅ OK</button>
-            </div>}
-            <div style={{display:"flex",gap:2,marginBottom:3}}>
-              {editId!==p.id&&<button onClick={e=>{e.stopPropagation();setEditId(p.id);}} style={{padding:"2px 5px",borderRadius:3,background:"#1a233288",color:"#94a3b8",border:"1px solid #1a2332",fontSize:6,cursor:"pointer"}}>✏️ Modifier</button>}
-            </div>
-            {p.seq&&<div style={{fontSize:7,color:"#F59E0B",marginBottom:2}}>📋 Séquence: {SEQUENCES.find(s=>s.id===p.seq)?.name} — Étape {p.seqStep+1}/{SEQUENCES.find(s=>s.id===p.seq)?.steps.length}</div>}
-            {Object.keys(p.pi).length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",marginBottom:2}}>{Object.entries(p.pi).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=><span key={k} style={{background:"#10B98115",color:"#10B981",padding:"0px 4px",borderRadius:4,fontSize:7}}>⭐{k}×{v}</span>)}</div>}
-            {/* INTERACTIONS */}
-            {p.ints.length>0&&<div style={{marginBottom:2}}>
-              <div style={{fontSize:7,color:"#475569",marginBottom:1}}>📜 {p.ints.length} interactions</div>
-              <div style={{maxHeight:60,overflowY:"auto"}}>{p.ints.slice().reverse().slice(0,5).map((int,i)=><div key={i} style={{fontSize:7,color:"#64748b",display:"flex",gap:2,alignItems:"center",borderBottom:"1px solid #0d1520",padding:"1px 0"}}>
-                <span style={{fontFamily:"'JetBrains Mono'",fontSize:6,color:"#334155"}}>{int.t}</span>
-                <span>{int.ch==="email"?"📧":int.ch==="whatsapp"?"💬":"📸"}</span>
-                {int.intent==="outbound"&&<span style={{fontSize:6,color:"#F59E0B"}}>🤖</span>}
-                <span style={{flex:1,color:int.intent==="ready_to_order"?"#10B981":"#94a3b8"}}>{int.notes}</span>
-                {int.autoMsg&&<button onClick={e=>{e.stopPropagation();navigator.clipboard?.writeText(int.autoMsg);}} style={{background:"#1a2332",color:"#94a3b8",border:"none",borderRadius:2,padding:"0px 3px",fontSize:5,cursor:"pointer"}}>📋</button>}
-              </div>)}</div>
-            </div>}
-            {p.orders.length>0&&<div style={{marginBottom:2}}><div style={{fontSize:7,color:"#06B6D4",fontWeight:600}}>💶 {p.orders.length} commandes — {p.revenue.toLocaleString()}€</div></div>}
-            {p.nt&&editId!==p.id&&<div style={{fontSize:7,color:"#94a3b8",marginBottom:2,borderLeft:"2px solid #10B981",paddingLeft:4}}>💡 {p.nt}</div>}
-            {/* ACTIONS */}
-            <div style={{display:"flex",gap:2,marginTop:2}}>
-              <button title="Ouvrir le chat IA" onClick={e=>{e.stopPropagation();setSel(p);setChat([]);setVw("agent");}} style={{flex:1,padding:4,borderRadius:4,background:"#10B98118",color:"#10B981",border:"1px solid #10B98122",fontSize:7,fontWeight:700,cursor:"pointer"}}>🤖 Chat</button>
-              <button title="Enregistrer une commande" onClick={e=>{e.stopPropagation();setShowOrder(p.id);}} style={{padding:"4px 5px",borderRadius:4,background:"#06B6D418",color:"#06B6D4",border:"1px solid #06B6D422",fontSize:7,fontWeight:700,cursor:"pointer"}}>💶</button>
-              {p.em&&<button title="Envoyer un email" onClick={e=>{e.stopPropagation();openE(p.em,"Partenariat CBD — Geosiste","");}} style={{padding:"4px 5px",borderRadius:4,background:"#2563EB18",color:"#60a5fa",border:"none",fontSize:7,cursor:"pointer"}}>📧</button>}
-              {p.wa&&<button title="Ouvrir WhatsApp" onClick={e=>{e.stopPropagation();openW(p.wa,"");}} style={{padding:"4px 5px",borderRadius:4,background:"#16a34a18",color:"#4ade80",border:"none",fontSize:7,cursor:"pointer"}}>💬</button>}
-              {p.ig&&<button title="Ouvrir Instagram" onClick={e=>{e.stopPropagation();openI(p.ig);}} style={{padding:"4px 5px",borderRadius:4,background:"#db277718",color:"#f472b6",border:"none",fontSize:7,cursor:"pointer"}}>📸</button>}
-              {p.li&&<button title="Ouvrir LinkedIn" onClick={e=>{e.stopPropagation();openL(p.li);}} style={{padding:"4px 5px",borderRadius:4,background:"#0A66C218",color:"#0A66C2",border:"none",fontSize:7,cursor:"pointer"}}>🔗</button>}
-              <button title="Supprimer ce prospect" onClick={e=>{e.stopPropagation();delP(p.id);}} style={{padding:"4px 5px",borderRadius:4,background:"#EF444418",color:"#EF4444",border:"none",fontSize:7,cursor:"pointer"}}>🗑️</button>
-            </div>
-            {showOrder===p.id&&<div style={{marginTop:4,background:"#0f172a",borderRadius:4,padding:6,border:"1px solid #06B6D433"}} onClick={e=>e.stopPropagation()}>
-              <div style={{fontSize:8,color:"#06B6D4",fontWeight:700,marginBottom:3}}>💶 Nouvelle commande</div>
-              <input value={orderForm.products} onChange={e=>setOF(q=>({...q,products:e.target.value}))} placeholder="Produits commandés" style={{...fs,width:"100%",fontSize:8,marginBottom:2,boxSizing:"border-box"}}/>
-              <div style={{display:"flex",gap:2}}>
-                <input value={orderForm.amount} onChange={e=>setOF(q=>({...q,amount:e.target.value}))} placeholder="Montant €" type="number" style={{...fs,flex:1,fontSize:8}}/>
-                <input value={orderForm.date} onChange={e=>setOF(q=>({...q,date:e.target.value}))} placeholder="Date" type="date" style={{...fs,flex:1,fontSize:8}}/>
-              </div>
-              <button onClick={()=>addOrder(p.id)} style={{width:"100%",marginTop:3,padding:4,borderRadius:4,background:"#06B6D4",color:"#000",border:"none",fontSize:8,fontWeight:700,cursor:"pointer"}}>✅ Enregistrer</button>
-            </div>}
-          </div>}
-        </div>;})}
-      </div>}
+        {/* Recent activity */}
+        <SecTitle c="#60a5fa" ic="⚡" t="Activité récente"/>
+        {hist.length===0&&fups.length===0?<div style={{...GC,textAlign:"center",color:"#475569",padding:24}}><div style={{fontSize:28,marginBottom:6}}>🌱</div><p style={{fontSize:11}}>Commencez par contacter un prospect avec l'Agent IA</p></div>:
+          [...hist.slice(0,3).map(h=>({type:"send",date:h.date,text:`📨 ${h.ch} → ${h.pnm}`})),...fups.filter(f=>!f.done).slice(0,2).map(f=>({type:"fup",date:f.date,text:`🔔 Relancer ${f.pnm}`}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5).map((a,i)=>
+            <div key={i} style={{padding:"8px 0",borderBottom:"1px solid rgba(52,211,153,0.06)",fontSize:11,display:"flex",justifyContent:"space-between"}}><span>{a.text}</span><span style={{fontSize:9,color:"#334155"}}>{new Date(a.date).toLocaleDateString("fr")}</span></div>
+          )
+        }
 
-      {/* ═══ MAP ═══ */}
-      {vw==="map"&&<div style={{padding:"8px 10px",height:"calc(100vh - 72px)",overflowY:"auto"}}>
-        <div style={{fontSize:12,fontWeight:800,color:"#e2e8f0",marginBottom:6}}>🗺️ Carte Europe — {db.length} prospects</div>
-        <div style={{position:"relative",width:"100%",aspectRatio:"4/3",background:"#080d17",borderRadius:8,border:"1px solid #1a2332",overflow:"hidden"}}>
-          {/* Simple SVG Europe map */}
-          <svg viewBox="0 0 400 320" style={{width:"100%",height:"100%"}}>
-            <rect width="400" height="320" fill="#080d17"/>
-            {/* Simplified Europe coastline */}
-            <path d="M120,40 L180,30 L220,50 L260,35 L300,45 L320,60 L310,90 L330,100 L340,130 L320,160 L330,180 L310,200 L280,210 L260,240 L240,260 L220,250 L200,270 L180,260 L160,280 L140,260 L120,240 L100,220 L90,200 L100,180 L80,160 L90,130 L80,110 L100,80 L110,60Z" fill="#0f172a" stroke="#1e293b" strokeWidth="1"/>
-            {/* Country dots */}
-            {Object.entries(GEO).map(([country,[lat,lng]])=>{
-              const x=200+(lng*6);const y=280-(lat-35)*6;
-              const prospects=db.filter(p=>p.co===country);
-              const hasHot=prospects.some(p=>["hot","ready"].includes(p.st));
-              const hasClient=prospects.some(p=>p.st==="client");
-              const color=hasClient?"#06B6D4":hasHot?"#EF4444":prospects.length>0?"#10B981":"#334155";
-              const size=Math.max(4,Math.min(12,prospects.length*2));
-              return prospects.length>0?<g key={country}>
-                <circle cx={x} cy={y} r={size} fill={color} opacity={0.3}/>
-                <circle cx={x} cy={y} r={size/2} fill={color}/>
-                <text x={x} y={y-size-2} textAnchor="middle" fill="#94a3b8" fontSize="7" fontFamily="Outfit">{FL[country]} {prospects.length}</text>
-              </g>:null;
-            })}
+        {/* CA Chart */}
+        <div style={{...GC,marginTop:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#34d399",marginBottom:10}}>📊 CA Mensuel</div>
+          <svg viewBox="0 0 420 160" style={{width:"100%"}}>
+            <defs><linearGradient id="bG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399"/><stop offset="100%" stopColor="#059669"/></linearGradient></defs>
+            {caData.map((d,i)=>{const mx=Math.max(...caData.map(x=>x.v));const h=(d.v/mx)*110;const x=20+i*33;return<g key={i}><rect x={x} y={130-h} width="24" height={h} rx="4" fill="url(#bG)" opacity="0.85"/><text x={x+12} y={148} fill="#475569" fontSize="7" textAnchor="middle" fontFamily="'DM Mono',monospace">{d.m}</text><text x={x+12} y={124-h} fill="#34d399" fontSize="7" textAnchor="middle" fontWeight="600">{(d.v/1000).toFixed(1)}k</text></g>;})}
           </svg>
         </div>
-        <div style={{marginTop:6,display:"flex",gap:6,justifyContent:"center",fontSize:8,color:"#475569"}}>
-          <span><span style={{color:"#10B981"}}>●</span> Prospect</span>
-          <span><span style={{color:"#EF4444"}}>●</span> Chaud</span>
-          <span><span style={{color:"#06B6D4"}}>●</span> Client</span>
-        </div>
-        {/* Country list */}
-        <div style={{marginTop:8}}>
-          {Object.entries(GEO).filter(([c])=>db.some(p=>p.co===c)).sort((a,b)=>db.filter(p=>p.co===b[0]).length-db.filter(p=>p.co===a[0]).length).map(([country])=>{
-            const ps=db.filter(p=>p.co===country);const rev=ps.reduce((a,p)=>a+p.revenue,0);
-            return <div key={country} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid #0d1520"}}>
-              <span style={{fontSize:10}}>{FL[country]} {country} <span style={{color:"#475569",fontSize:8}}>({ps.length})</span></span>
-              <div style={{display:"flex",gap:4,fontSize:8}}>
-                {ps.some(p=>p.st==="client")&&<span style={{color:"#06B6D4"}}>{ps.filter(p=>p.st==="client").length}✅</span>}
-                {ps.some(p=>["hot","ready"].includes(p.st))&&<span style={{color:"#EF4444"}}>{ps.filter(p=>["hot","ready"].includes(p.st)).length}🔥</span>}
-                {rev>0&&<span style={{color:"#10B981",fontWeight:600}}>{rev.toLocaleString()}€</span>}
-              </div>
-            </div>;
-          })}
-        </div>
       </div>}
 
-      {/* ═══ PRODUCTS ═══ */}
-      {vw==="prods"&&<div style={{padding:"8px 10px",height:"calc(100vh - 72px)",overflowY:"auto"}}>
-        <div style={{fontSize:12,fontWeight:800,color:"#e2e8f0",marginBottom:6}}>🛒 Catalogue ({CAT.length})</div>
-        {topP.length>0&&<div style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:6,marginBottom:6}}>
-          <div style={{fontSize:9,fontWeight:700,color:"#F59E0B",marginBottom:3}}>⭐ Plus demandés</div>
-          {topP.slice(0,4).map(([p,c],i)=><div key={p} style={{fontSize:8,color:"#94a3b8"}}>{i+1}. {p} <span style={{color:"#10B981"}}>×{c}</span></div>)}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* ═══ SECTION: AGENT IA ═══ */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {section==="agent"&&<div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 126px)"}}>
+        {/* Agent toolbar */}
+        <div style={{padding:"8px 12px",borderBottom:"1px solid rgba(52,211,153,0.06)"}}>
+          {/* Canal selector */}
+          <div style={{display:"flex",gap:4,marginBottom:6}}>
+            {[{k:"email",ic:"📧",c:"#60a5fa"},{k:"whatsapp",ic:"💬",c:"#4ade80"},{k:"instagram",ic:"📸",c:"#f472b6"}].map(c=>
+              <button key={c.k} onClick={()=>setCh(c.k)} style={{padding:"5px 12px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:ch===c.k?c.c+"18":"transparent",color:ch===c.k?c.c:"#475569",border:`1px solid ${ch===c.k?c.c+"30":"rgba(52,211,153,0.08)"}`,fontFamily:"'DM Sans',sans-serif"}}>{c.ic} {c.k}</button>
+            )}
+          </div>
+          {/* Prospect selector */}
+          <select value={sel?.id||""} onChange={e=>{setSel(db.find(p=>p.id===Number(e.target.value))||null);setChat([]);}} style={{...I,fontSize:11,padding:"7px 10px"}}>
+            <option value="">— Choisir un prospect (ou mode libre) —</option>
+            {db.sort((a,b)=>(b.sc||0)-(a.sc||0)).map(p=><option key={p.id} value={p.id}>{FL[p.co]||"🌍"} {p.nm} [{STATS.find(s=>s.v===p.st)?.l}] {p.ca>0?`${p.ca}€`:""}</option>)}
+          </select>
+          {/* Account selectors */}
+          {ch==="email"&&conn.email.accounts.filter(a=>a.em).length>1&&<div style={{display:"flex",gap:4,marginTop:4,fontSize:10}}><span style={{color:"#475569",padding:"4px 0"}}>Via:</span>{conn.email.accounts.filter(a=>a.em).map(a=><button key={a.id} onClick={()=>setConn(p=>({...p,email:{...p.email,accounts:p.email.accounts.map(x=>({...x,active:x.id===a.id}))}}))} style={{...BO,padding:"2px 8px",fontSize:9,color:a.active?"#60a5fa":"#475569"}}>{a.label||a.em}</button>)}</div>}
+          {ch==="instagram"&&conn.instagram.accounts.filter(a=>a.handle).length>1&&<div style={{display:"flex",gap:4,marginTop:4,fontSize:10}}><span style={{color:"#475569",padding:"4px 0"}}>Via:</span>{conn.instagram.accounts.filter(a=>a.handle).map(a=><button key={a.id} onClick={()=>setConn(p=>({...p,instagram:{...p.instagram,accounts:p.instagram.accounts.map(x=>({...x,active:x.id===a.id}))}}))} style={{...BO,padding:"2px 8px",fontSize:9,color:a.active?"#f472b6":"#475569"}}>{a.handle}</button>)}</div>}
+        </div>
+
+        {/* Prospect info bar */}
+        {sel&&<div style={{padding:"8px 14px",borderBottom:"1px solid rgba(52,211,153,0.06)",background:"rgba(16,185,129,0.03)",fontSize:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{FL[sel.co]} <strong style={{color:"#e2e8f0",fontSize:12}}>{sel.nm}</strong> · <span style={{color:STATS.find(s=>s.v===sel.st)?.c}}>{STATS.find(s=>s.v===sel.st)?.l}</span></span><span style={{color:"#fbbf24",fontWeight:700}}>{sel.ca>0?sel.ca.toLocaleString()+"€":""}</span></div>
+          {sel.nt&&<div style={{color:"#64748b",marginTop:2}}>{sel.nt}</div>}
         </div>}
-        {[...new Set(CAT.map(p=>p.c))].map(cat=><div key={cat}>
-          <div style={{fontSize:10,fontWeight:700,color:"#10B981",marginTop:6,marginBottom:3}}>{cat}</div>
-          {CAT.filter(p=>p.c===cat).map(p=><div key={p.r} style={{background:"#080d17",borderRadius:5,border:"1px solid #1a2332",padding:"4px 6px",marginBottom:2}}>
-            <div style={{display:"flex",justifyContent:"space-between"}}>
-              <div><span style={{fontWeight:600,fontSize:9,color:"#e2e8f0"}}>{p.n}</span> <span style={{fontSize:7,color:["CSA","MCP-N","10-OH"].includes(p.m)?"#F59E0B":"#475569"}}>{p.m}</span></div>
-              <span style={{fontFamily:"'JetBrains Mono'",fontSize:9,fontWeight:700,color:"#10B981"}}>{p.p}€</span>
+
+        {/* Chat area */}
+        <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:"12px 14px"}}>
+          {chat.length===0&&<div style={{textAlign:"center",marginTop:20}}>
+            <div style={{fontSize:48,marginBottom:10,filter:"drop-shadow(0 0 20px rgba(16,185,129,0.25))"}}>🤖</div>
+            <div style={{fontSize:20,fontWeight:800,color:"#34d399",marginBottom:4}}>Agent Geosiste</div>
+            <div style={{fontSize:11,color:"#475569",marginBottom:6}}>Expert CBD · {PRODS.length} produits · Détection Pinaca · Multi-langue</div>
+            <div style={{fontSize:10,color:"#334155",marginBottom:20,fontFamily:"'DM Mono',monospace"}}>Canal: {ch} {sel?`· Prospect: ${sel.nm}`:""}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {[
+                sel?`Rédige un ${ch} commercial pour ${sel.nm}`:"Aide-moi à prospecter un CBD shop",
+                "Compare nos hash CSA-14 vs MCP-N",
+                "Hash à 0.20€/g effet très fort, c'est safe ?",
+                "Pitch pour un buraliste qui débute",
+                sel?`Prépare une relance pour ${sel.nm}`:"Calcule un devis 500g Amnesia + 200g hash",
+                "Newsletter pour nos nouveaux produits vapes",
+              ].map((q,i)=>
+                <button key={i} onClick={()=>sendMsg(q)} style={{padding:"10px 12px",borderRadius:10,...G,color:"#94a3b8",fontSize:10,cursor:"pointer",textAlign:"left",fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{q}</button>
+              )}
             </div>
-            {p.v.length>0&&<div style={{display:"flex",gap:1,marginTop:2,flexWrap:"wrap"}}>{p.v.map(v=><span key={v} style={{background:"#1a2332",color:"#94a3b8",padding:"0px 4px",borderRadius:3,fontSize:6}}>{v}</span>)}</div>}
+          </div>}
+
+          {chat.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",marginBottom:10}}>
+            <div style={{maxWidth:"88%",padding:"12px 16px",borderRadius:16,background:m.role==="user"?"linear-gradient(135deg,#10b981,#059669)":"rgba(10,16,29,0.9)",color:m.role==="user"?"#000":"#e2e8f0",border:m.role==="user"?"none":"1px solid rgba(52,211,153,0.1)",fontSize:12,lineHeight:1.65,whiteSpace:"pre-wrap",boxShadow:m.role==="user"?"0 4px 15px rgba(16,185,129,0.2)":"0 2px 10px rgba(0,0,0,0.3)"}}>
+              {m.content}
+              {m.role==="assistant"&&sel&&<div style={{display:"flex",gap:4,marginTop:10,paddingTop:8,borderTop:"1px solid rgba(52,211,153,0.1)"}}>
+                {ch==="email"&&sel.em&&<button onClick={()=>openMail(sel.em,"Partenariat CBD — L'Entrepôt du Chanvrier",m.content)} style={{...BO,fontSize:9,padding:"4px 8px"}}>📧 Envoyer</button>}
+                {ch==="whatsapp"&&sel.wa&&<button onClick={()=>openWA(sel.wa,m.content)} style={{...BO,fontSize:9,padding:"4px 8px"}}>💬 WhatsApp</button>}
+                {ch==="instagram"&&sel.ig&&<button onClick={()=>openIG(sel.ig)} style={{...BO,fontSize:9,padding:"4px 8px"}}>📸 DM</button>}
+                <button onClick={()=>navigator.clipboard.writeText(m.content)} style={{...BO,fontSize:9,padding:"4px 8px"}}>📋</button>
+              </div>}
+            </div>
           </div>)}
-        </div>)}
+          {loading&&<div style={{textAlign:"center",padding:16}}><span style={{color:"#34d399",fontSize:12,animation:"pulse 1.5s infinite",display:"inline-block"}}>🤖 L'agent réfléchit...</span></div>}
+        </div>
+
+        {/* Action bar */}
+        {sel&&<div style={{padding:"6px 12px",borderTop:"1px solid rgba(52,211,153,0.06)",display:"flex",gap:4,flexWrap:"wrap"}}>
+          <button onClick={()=>addFup(sel,3)} style={{...BO,fontSize:9,padding:"4px 8px"}}>🔔 3j</button>
+          <button onClick={()=>addFup(sel,7)} style={{...BO,fontSize:9,padding:"4px 8px"}}>🔔 7j</button>
+          <button onClick={()=>addFup(sel,14)} style={{...BO,fontSize:9,padding:"4px 8px"}}>🔔 14j</button>
+          {rec?<button onClick={stopRec} style={{...BO,fontSize:9,padding:"4px 8px",color:"#f87171",background:"rgba(248,113,113,0.1)"}}>⏹ Stop</button>:<button onClick={startRec} style={{...BO,fontSize:9,padding:"4px 8px"}}>🎙️ Note</button>}
+          <button onClick={()=>sendMsg(`Génère un pitch ${ch} complet pour ${sel.nm}`)} style={{...BO,fontSize:9,padding:"4px 8px",color:"#34d399"}}>⚡ Auto-pitch</button>
+        </div>}
+
+        {/* Input */}
+        <div style={{padding:"10px 12px",borderTop:"1px solid rgba(52,211,153,0.08)",display:"flex",gap:8}}>
+          <input value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg(inp)} placeholder="Demandez à l'agent IA..." style={{...I,flex:1}}/>
+          <button onClick={()=>sendMsg(inp)} disabled={loading} style={{...BG,padding:"10px 22px",fontSize:14}}>▶</button>
+        </div>
       </div>}
 
-      {/* ═══ CONNECT ═══ */}
-      {vw==="connect"&&<div style={{padding:"8px 10px",height:"calc(100vh - 72px)",overflowY:"auto"}}>
-        <div style={{fontSize:12,fontWeight:800,color:"#e2e8f0",marginBottom:6}}>🔗 Connexions & API</div>
-        {/* SUPABASE */}
-        <div style={{background:"#080d17",borderRadius:6,border:`1px solid ${supaOk?"#10B98133":"#EF444433"}`,padding:8,marginBottom:4}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#3B82F6",marginBottom:3}}>🗄️ Supabase — Base de données</div>
-          <div style={{fontSize:8,padding:"4px 8px",borderRadius:4,background:supaOk?"#052e16":"#450a0a",color:supaOk?"#4ade80":"#fca5a5",marginBottom:4}}>
-            {supaMsg}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* ═══ SECTION: CRM ═══ */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {section==="crm"&&!subPage&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <SecTitle c="#34d399" ic="📋" t="CRM Prospects"/>
+        {/* Pipeline summary */}
+        <div style={{display:"flex",gap:4,marginBottom:12,overflowX:"auto"}}>{STATS.map(s=>{const c=db.filter(p=>p.st===s.v).length;return<button key={s.v} onClick={()=>setFTag(fTag===s.v?"":s.v)} style={{...BO,fontSize:9,whiteSpace:"nowrap",background:fTag===s.v?s.c+"18":"transparent",color:fTag===s.v?s.c:"#475569",borderColor:fTag===s.v?s.c+"30":"rgba(52,211,153,0.08)"}}>{s.l} ({c})</button>;})}<button onClick={()=>setFTag("")} style={{...BO,fontSize:9,color:!fTag?"#34d399":"#475569"}}>Tous</button></div>
+        {/* Tags filter */}
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>{tags.map(t=>{const c=db.filter(p=>p.tg?.includes(t)).length;return c>0?<button key={t} onClick={()=>setFTag(fTag===t?"":t)} style={{...BO,fontSize:9,background:fTag===t?TC[tags.indexOf(t)%TC.length]+"18":"transparent",color:fTag===t?TC[tags.indexOf(t)%TC.length]:"#475569"}}>#{t} ({c})</button>:null;})}</div>
+        {/* Add tag */}
+        <div style={{display:"flex",gap:4,marginBottom:14}}><input value={newTag} onChange={e=>setNewTag(e.target.value)} placeholder="Nouveau tag..." style={{...I,flex:1,fontSize:11,padding:"6px 10px"}}/><button onClick={()=>{if(newTag.trim()&&!tags.includes(newTag.trim().toLowerCase())){setTags(p=>[...p,newTag.trim().toLowerCase()]);setNewTag("");}}} style={{...BO,fontSize:10}}>+ Tag</button></div>
+
+        {/* Prospect list */}
+        {(fTag?db.filter(p=>p.st===fTag||p.tg?.includes(fTag)):db).sort((a,b)=>(b.sc||0)-(a.sc||0)).map(p=>
+          <div key={p.id} style={{...GC,cursor:"pointer"}} onClick={()=>goAgent(p)}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14}}>{FL[p.co]||"🌍"} {p.nm}</div>
+                <div style={{fontSize:10,color:"#475569",marginTop:3}}>{p.em||"—"} {p.wa?`· ${p.wa}`:""}</div>
+                <div style={{marginTop:5}}>{p.tg?.map(t=><span key={t} style={bdg(TC[tags.indexOf(t)%TC.length]||"#475569")}>#{t}</span>)}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:22,fontWeight:800,color:"#34d399",lineHeight:1}}>{p.sc}</div>
+                <div style={{fontSize:9,color:STATS.find(s=>s.v===p.st)?.c,marginTop:2}}>{STATS.find(s=>s.v===p.st)?.l}</div>
+                {p.ca>0&&<div style={{fontSize:12,color:"#fbbf24",fontWeight:700,marginTop:2}}>{p.ca.toLocaleString()}€</div>}
+              </div>
+            </div>
+            {p.nt&&<div style={{fontSize:10,color:"#64748b",marginTop:6,borderTop:"1px solid rgba(52,211,153,0.06)",paddingTop:6}}>{p.nt}</div>}
+            <div style={{display:"flex",gap:4,marginTop:8}} onClick={e=>e.stopPropagation()}>
+              <select value={p.st} onChange={e=>setDb(prev=>prev.map(x=>x.id===p.id?{...x,st:e.target.value}:x))} style={{...I,width:"auto",fontSize:9,padding:"3px 6px"}}>{STATS.map(s=><option key={s.v} value={s.v}>{s.l}</option>)}</select>
+              <button onClick={()=>goAgent(p)} style={{...BO,fontSize:9,color:"#34d399"}}>🤖 Agent</button>
+              <button onClick={()=>{if(window.confirm(`Supprimer ${p.nm} ?`))setDb(prev=>prev.filter(x=>x.id!==p.id));}} style={{...BO,fontSize:9,color:"#f87171"}}>✕</button>
+            </div>
+            {p.vn?.length>0&&<div style={{marginTop:6,borderTop:"1px solid rgba(52,211,153,0.06)",paddingTop:4}}><span style={{fontSize:9,color:"#475569"}}>🎙️ {p.vn.length} note(s)</span>{p.vn.map(v=><audio key={v.id} controls src={v.url} style={{display:"block",width:"100%",height:28,marginTop:3}}/>)}</div>}
           </div>
-          <div style={{fontSize:7,color:"#475569",lineHeight:1.5}}>
-            {SUPA_READY?<>
-              <strong style={{color:"#60a5fa"}}>URL:</strong> {SUPABASE_URL.substring(0,40)}...<br/>
-              <strong>Sauvegarde auto</strong> toutes les 2 secondes — prospects, interactions, alertes, config WhatsApp/Pappers.<br/>
-              Les données sont <strong>persistantes</strong> — même si tu fermes le navigateur, tout est sauvegardé.
-            </>:<>
-              <strong style={{color:"#EF4444"}}>Non configuré</strong> — Les données se perdent à la fermeture.<br/>
-              Pour activer : ouvre le fichier <code style={{background:"#1a2332",padding:"0 3px",borderRadius:2}}>App.jsx</code> et remplace <code style={{background:"#1a2332",padding:"0 3px",borderRadius:2}}>SUPABASE_URL</code> et <code style={{background:"#1a2332",padding:"0 3px",borderRadius:2}}>SUPABASE_KEY</code> par tes vraies valeurs (voir guide ci-dessous).
-            </>}
-          </div>
-        </div>
-        {/* EMAIL */}
-        <div style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:8,marginBottom:4}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#2563EB",marginBottom:3}}>📧 Email / Gmail</div>
-          <div style={{fontSize:7,color:"#475569",lineHeight:1.5}}>
-            <strong style={{color:"#60a5fa"}}>✅ Connecté automatiquement</strong> — Quand vous cliquez 📧 sur une fiche CRM ou dans le chat, votre client mail s'ouvre (Gmail, Outlook, Apple Mail) avec le destinataire, l'objet et le message pré-rempli par l'agent IA.<br/>
-            L'email part depuis <strong>votre adresse</strong>. Rien à configurer.
-          </div>
-        </div>
-        {/* WHATSAPP */}
-        <div style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:8,marginBottom:4}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#16a34a",marginBottom:3}}>💬 WhatsApp Business + Alertes</div>
-          <input value={waNum} onChange={e=>setWaNum(e.target.value)} placeholder="Votre numéro WhatsApp (ex: 33664989889)" style={{width:"100%",...fs,marginBottom:3,boxSizing:"border-box"}}/>
-          <div style={{fontSize:7,color:"#475569",lineHeight:1.5}}>
-            {waNum?<strong style={{color:"#4ade80"}}>✅ Connecté — Alertes WhatsApp activées</strong>:<strong style={{color:"#EF4444"}}>❌ Non connecté — Entrez votre numéro</strong>}<br/>
-            <strong>Alertes auto</strong> : Quand un prospect est 💰 prêt, 🔥 chaud, ou ⚠️ Pinaca → notification WhatsApp instantanée sur votre téléphone.<br/>
-            <strong>Envoi</strong> : Cliquez 💬 sur une fiche CRM → WhatsApp s'ouvre avec le message pré-rempli pour le prospect.<br/>
-            Format: code pays + numéro sans espaces (ex: 33664989889)
-          </div>
-        </div>
-        {/* INSTAGRAM */}
-        <div style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:8,marginBottom:4}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#db2777",marginBottom:3}}>📸 Instagram</div>
-          <div style={{fontSize:7,color:"#475569",lineHeight:1.5}}>
-            <strong style={{color:"#f472b6"}}>✅ Connecté automatiquement</strong> — Renseignez le @ Instagram de chaque prospect dans sa fiche CRM (✏️ Modifier).<br/>
-            Cliquez 📸 sur la fiche → ouvre le profil Instagram du prospect pour envoyer un DM.<br/>
-            L'agent IA génère des messages courts adaptés au format Instagram (200 car. max, emojis, accrocheur).<br/>
-            <strong>Votre compte</strong> : @lentrepot_du_chanvrier
-          </div>
-        </div>
-        {/* LINKEDIN */}
-        <div style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:8,marginBottom:4}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#0A66C2",marginBottom:3}}>🔗 LinkedIn</div>
-          <div style={{fontSize:7,color:"#475569",lineHeight:1.5}}>
-            <strong style={{color:"#3B82F6"}}>✅ Connecté automatiquement</strong> — Ajoutez l'URL ou le nom LinkedIn de chaque prospect dans sa fiche CRM (✏️ Modifier).<br/>
-            Formats: <code style={{background:"#1a2332",padding:"0 3px",borderRadius:2}}>linkedin.com/company/nom</code> ou simplement <code style={{background:"#1a2332",padding:"0 3px",borderRadius:2}}>nom-entreprise</code><br/>
-            Cliquez 🔗 sur la fiche → ouvre la page LinkedIn pour envoyer un InMail ou une demande de connexion.
-          </div>
-        </div>
-        {/* PAPPERS */}
-        <div style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:8,marginBottom:4}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#F59E0B",marginBottom:3}}>🏛️ Pappers API — Registre entreprises FR</div>
-          <input value={pKey} onChange={e=>setPK(e.target.value)} placeholder="Clé API Pappers (gratuite sur pappers.fr/api)" style={{width:"100%",...fs,marginBottom:3,boxSizing:"border-box"}}/>
-          <div style={{fontSize:7,color:"#475569",lineHeight:1.5,marginBottom:3}}>
-            {pKey?<strong style={{color:"#4ade80"}}>✅ Clé API renseignée</strong>:<strong style={{color:"#EF4444"}}>❌ Non connecté — Créez un compte gratuit sur pappers.fr/api</strong>}<br/>
-            Recherche automatique d'entreprises CBD en France par mot-clé. ~17 000 entreprises code NAF 4776Z. 100 requêtes/mois gratuit.
-          </div>
-          {pKey&&<div style={{display:"flex",gap:2,marginBottom:3,flexWrap:"wrap"}}>{["CBD","chanvre","cannabidiol","hemp","chanvrier"].map(q=><button key={q} onClick={()=>searchP(q)} style={{...fs,cursor:"pointer",background:"#F59E0B12",color:"#F59E0B",border:"1px solid #F59E0B22",fontWeight:600,fontSize:8}}>🔍 {q}</button>)}</div>}
-          {pRes&&<div style={{fontSize:8,color:pRes.startsWith("✅")?"#10B981":"#EF4444",marginBottom:3}}>{pRes}</div>}
-        </div>
-        {/* CSV IMPORT */}
-        <div style={{background:"#080d17",borderRadius:6,border:"1px solid #1a2332",padding:8,marginBottom:4}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#3B82F6",marginBottom:3}}>📄 Import CSV</div>
-          <div style={{fontSize:7,color:"#475569",marginBottom:3}}>Format: <code style={{background:"#1a2332",padding:"0 3px",borderRadius:2}}>nom;pays;ville;site;email;produits;notes</code></div>
-          <textarea value={csvText} onChange={e=>setCsvText(e.target.value)} placeholder={"Green CBD;France;Paris;greencbd.fr;contact@greencbd.fr;Fleurs,CSA;Boutique\nHemp Store;Allemagne;Berlin;hempstore.de;info@hempstore.de;Huiles;Grossiste"} style={{width:"100%",height:50,...fs,resize:"vertical",fontFamily:"'JetBrains Mono'",fontSize:7,boxSizing:"border-box"}}/>
-          <button onClick={importCSV} style={{width:"100%",marginTop:3,padding:5,borderRadius:5,background:csvText.trim()?"#3B82F6":"#1a2332",color:csvText.trim()?"#fff":"#475569",border:"none",fontSize:8,fontWeight:700,cursor:csvText.trim()?"pointer":"not-allowed"}}>📥 Importer CSV</button>
-        </div>
-        {/* EXPORT */}
-        <button onClick={()=>{const h="Nom;Pays;Ville;Site;Email;Tél;WhatsApp;Instagram;LinkedIn;Produits;Score;Statut;Segment;Interactions;Revenue;Séquence\n";const csv=db.map(p=>[p.nm,p.co,p.ct,p.web,p.em,p.ph||"",p.wa,p.ig,p.li,p.pr.join(","),calcScore(p),p.st,p.sg,p.ints.length,p.revenue,p.seq?`Seq${p.seq} step${p.seqStep}`:"—"].join(";")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\uFEFF"+h+csv],{type:"text/csv"}));a.download="geosiste_crm.csv";a.click();}} style={{width:"100%",padding:8,borderRadius:6,background:"#10B981",color:"#000",border:"none",fontWeight:700,fontSize:10,cursor:"pointer"}}>💾 Exporter CRM complet ({db.length} prospects)</button>
+        )}
+        <button onClick={()=>{const n=prompt("Nom du prospect ?");if(n)setDb(p=>[...p,{id:Date.now(),nm:n,co:"FR",em:"",wa:"",ig:"",st:"new",tg:[],sc:50,ca:0,nt:"",ints:[],vn:[]}]);}} style={{...BG,width:"100%",marginTop:8}}>+ Ajouter prospect</button>
       </div>}
 
-      {/* ═══ ALERTS ═══ */}
-      {vw==="alerts"&&<div style={{padding:"8px 10px",height:"calc(100vh - 72px)",overflowY:"auto"}}>
-        <div style={{fontSize:12,fontWeight:800,color:"#e2e8f0",marginBottom:4}}>🔔 Alertes ({alerts.length})</div>
-        {alerts.length===0&&<div style={{textAlign:"center",marginTop:20,color:"#475569",fontSize:9}}>💰 Prêt à commander | 🔥 Très intéressé | ⚠️ Pinaca</div>}
-        {alerts.map(a=><div key={a.id} style={{background:a.read?"#080d17":"#0f172a",borderRadius:6,border:`1px solid ${a.type==="pinaca_alert"?"#dc262622":"#10B98122"}`,padding:6,marginBottom:2}}>
-          <div style={{fontSize:9,fontWeight:700,color:a.type==="pinaca_alert"?"#ef4444":a.type==="ready_to_order"?"#10B981":"#F59E0B"}}>{a.msg}</div>
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
-            <span style={{fontSize:7,color:"#475569"}}>{a.t}</span>
-            <button onClick={()=>{setSel(db.find(x=>x.id===a.pid)||null);setChat([]);setVw("agent");setAlerts(p=>p.map(x=>x.id===a.id?{...x,read:true}:x));}} style={{padding:"2px 6px",borderRadius:3,background:"#10B98122",color:"#10B981",border:"none",fontSize:7,fontWeight:700,cursor:"pointer"}}>🖐️</button>
-          </div>
-        </div>)}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* ═══ SECTION: TOOLS (sous-pages) ═══ */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {section==="tools"&&!subPage&&<div style={{padding:14}}>
+        <SecTitle c="#a78bfa" ic="🧰" t="Outils"/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {[
+            {k:"history",ic:"📨",l:"Historique envois",c:"#60a5fa",n:hist.length},
+            {k:"followups",ic:"🔔",l:"Relances",c:"#fbbf24",n:fups.filter(f=>!f.done).length},
+            {k:"newsletter",ic:"📰",l:"Newsletter IA",c:"#a78bfa",n:null},
+            {k:"templates",ic:"📝",l:"Templates",c:"#2dd4bf",n:tpls.length},
+            {k:"products",ic:"🏷️",l:"Catalogue",c:"#fb923c",n:PRODS.length},
+            {k:"pappers",ic:"🏢",l:"Pappers",c:"#818cf8",n:null},
+            {k:"import",ic:"📥",l:"Import fichiers",c:"#f472b6",n:null},
+            {k:"connect",ic:"🔌",l:"Connexions",c:"#60a5fa",n:null},
+          ].map(t=>
+            <div key={t.k} style={{...GC,textAlign:"center",padding:20,cursor:"pointer"}} onClick={()=>setSubPage(t.k)}>
+              <div style={{fontSize:24,marginBottom:6}}>{t.ic}</div>
+              <div style={{fontSize:12,fontWeight:700,color:t.c}}>{t.l}</div>
+              {t.n!==null&&<div style={{fontSize:10,color:"#475569",marginTop:2}}>{t.n}</div>}
+            </div>
+          )}
+        </div>
       </div>}
 
-      <style>{`*{box-sizing:border-box}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-thumb{background:#1a2332;border-radius:2px}input:focus,textarea:focus,select:focus{outline:none;border-color:#10B981!important}`}</style>
+      {/* ─── TOOLS: Historique ─── */}
+      {section==="tools"&&subPage==="history"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <button onClick={()=>setSubPage("")} style={{...BO,marginBottom:12,fontSize:10}}>← Outils</button>
+        <SecTitle c="#60a5fa" ic="📨" t="Historique Envois"/>
+        {hist.length===0?<div style={{...GC,textAlign:"center",padding:30,color:"#475569"}}><div style={{fontSize:32,marginBottom:6}}>📨</div><p>Aucun envoi pour le moment</p></div>:hist.map(h=><div key={h.id} style={GC}><div style={{display:"flex",justifyContent:"space-between"}}><div><strong>{h.pnm}</strong> <span style={bdg(h.ch==="email"?"#60a5fa":h.ch==="whatsapp"?"#4ade80":"#f472b6")}>{h.ch}</span></div><span style={{fontSize:9,color:"#475569"}}>{new Date(h.date).toLocaleString("fr")}</span></div><div style={{fontSize:10,color:"#94a3b8",marginTop:6,padding:"6px 8px",background:"rgba(15,23,42,0.6)",borderRadius:6}}>{h.msg}...</div></div>)}
+      </div>}
+
+      {/* ─── TOOLS: Relances ─── */}
+      {section==="tools"&&subPage==="followups"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <button onClick={()=>setSubPage("")} style={{...BO,marginBottom:12,fontSize:10}}>← Outils</button>
+        <SecTitle c="#fbbf24" ic="🔔" t="Relances & Rappels"/>
+        <div style={{...GC,borderLeft:"3px solid #fbbf24"}}><div style={{fontSize:11,fontWeight:600,color:"#fbbf24",marginBottom:8}}>Programmer une relance</div><select id="fu-sel" style={{...I,marginBottom:6,fontSize:11}}><option value="">Choisir prospect...</option>{db.map(p=><option key={p.id} value={p.id}>{FL[p.co]} {p.nm}</option>)}</select><div style={{display:"flex",gap:4}}>{[1,3,7,14,30].map(d=><button key={d} onClick={()=>{const pr=db.find(p=>p.id===Number(document.getElementById("fu-sel")?.value));if(pr)addFup(pr,d);}} style={{...BO,flex:1,fontSize:10}}>{d}j</button>)}</div></div>
+        {fups.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(f=>{const past=new Date(f.date)<new Date();return<div key={f.id} style={{...GC,borderLeft:`3px solid ${f.done?"#22c55e":past?"#f87171":"#fbbf24"}`,opacity:f.done?0.5:1}}><div style={{display:"flex",justifyContent:"space-between"}}><div><strong>{f.pnm}</strong>{past&&!f.done&&<span style={bdg("#f87171")}>EN RETARD</span>}{f.done&&<span style={bdg("#22c55e")}>FAIT</span>}</div><span style={{fontSize:10,color:"#475569"}}>{new Date(f.date).toLocaleDateString("fr")}</span></div><div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>{f.note}</div><div style={{display:"flex",gap:4,marginTop:6}}>{!f.done&&<><button onClick={()=>goAgent(db.find(p=>p.id===f.pid))} style={{...BO,fontSize:9}}>🤖 Agent</button><button onClick={()=>setFups(p=>p.map(x=>x.id===f.id?{...x,done:true}:x))} style={{...BO,fontSize:9,color:"#22c55e"}}>✓ Fait</button></>}<button onClick={()=>setFups(p=>p.filter(x=>x.id!==f.id))} style={{...BO,fontSize:9,color:"#f87171"}}>✕</button></div></div>;})}
+      </div>}
+
+      {/* ─── TOOLS: Newsletter ─── */}
+      {section==="tools"&&subPage==="newsletter"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <button onClick={()=>setSubPage("")} style={{...BO,marginBottom:12,fontSize:10}}>← Outils</button>
+        <SecTitle c="#a78bfa" ic="📰" t="Newsletter IA"/>
+        <div style={GC}><div style={{fontSize:12,fontWeight:600,color:"#a78bfa",marginBottom:8}}>1. Produits à mettre en avant</div><div style={{maxHeight:180,overflowY:"auto"}}>{PRODS.map(p=><label key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",cursor:"pointer",fontSize:11}}><input type="checkbox" checked={nlProds.includes(p.id)} onChange={()=>setNlProds(prev=>prev.includes(p.id)?prev.filter(x=>x!==p.id):[...prev,p.id])} style={{accentColor:"#a78bfa"}}/>{p.ic} {p.nm} <span style={{color:"#475569"}}>{p.pr}{p.u}</span></label>)}</div></div>
+        <div style={GC}><div style={{fontSize:12,fontWeight:600,color:"#a78bfa",marginBottom:8}}>2. Cibler par tags</div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{tags.map(t=><button key={t} onClick={()=>setNlTags(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t])} style={{...BO,fontSize:9,background:nlTags.includes(t)?"rgba(167,139,250,0.1)":"transparent",color:nlTags.includes(t)?"#a78bfa":"#475569"}}>#{t}</button>)}</div></div>
+        <div style={GC}><div style={{fontSize:12,fontWeight:600,color:"#a78bfa",marginBottom:6}}>3. Sujet</div><input value={nlSubj} onChange={e=>setNlSubj(e.target.value)} style={I}/></div>
+        <button onClick={genNL} disabled={loading||!nlProds.length} style={{...BG,width:"100%",background:"linear-gradient(135deg,#8b5cf6,#6d28d9)",marginBottom:12}}>{loading?"🤖 Génération...":"🤖 Générer newsletter ("+nlProds.length+" produits)"}</button>
+        {nlGen&&<div style={{...GC,borderLeft:"3px solid #a78bfa"}}><pre style={{fontSize:11,color:"#e2e8f0",whiteSpace:"pre-wrap",lineHeight:1.6}}>{nlGen}</pre><div style={{display:"flex",gap:4,marginTop:8}}><button onClick={()=>navigator.clipboard.writeText(nlGen)} style={BO}>📋 Copier</button><button onClick={()=>{const t=nlTags.length>0?db.filter(p=>nlTags.some(tg=>p.tg?.includes(tg))&&p.em):db.filter(p=>p.em);t.forEach(p=>logSend(p,"email","Newsletter: "+nlSubj));addN(`📰 Newsletter → ${t.length} prospects`);}} style={{...BG,fontSize:10,background:"linear-gradient(135deg,#8b5cf6,#6d28d9)"}}>📨 Envoyer ({(nlTags.length>0?db.filter(p=>nlTags.some(tg=>p.tg?.includes(tg))&&p.em):db.filter(p=>p.em)).length})</button></div></div>}
+      </div>}
+
+      {/* ─── TOOLS: Templates ─── */}
+      {section==="tools"&&subPage==="templates"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <button onClick={()=>setSubPage("")} style={{...BO,marginBottom:12,fontSize:10}}>← Outils</button>
+        <SecTitle c="#2dd4bf" ic="📝" t="Templates Messages"/>
+        <p style={{fontSize:10,color:"#475569",marginBottom:12}}>Variables : {"{nom}"} {"{agent}"} {"{products}"}</p>
+        {tpls.map(t=><div key={t.id} style={GC}><div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}><strong style={{fontSize:12}}>{t.nm}</strong><span style={bdg(t.ch==="email"?"#60a5fa":t.ch==="whatsapp"?"#4ade80":"#f472b6")}>{t.ch}</span><span style={bdg("#818cf8")}>{t.lang}</span></div>{editTpl===t.id?<div style={{marginTop:8}}><textarea value={t.body} onChange={e=>setTpls(p=>p.map(x=>x.id===t.id?{...x,body:e.target.value}:x))} style={{...I,height:160,resize:"vertical"}}/><button onClick={()=>setEditTpl(null)} style={{...BG,marginTop:6,fontSize:10}}>✓ Sauver</button></div>:<><pre style={{fontSize:10,color:"#94a3b8",marginTop:8,whiteSpace:"pre-wrap",maxHeight:80,overflow:"hidden",lineHeight:1.5}}>{t.body}</pre><div style={{display:"flex",gap:4,marginTop:8}}><button onClick={()=>setEditTpl(t.id)} style={BO}>✏️</button><button onClick={()=>navigator.clipboard.writeText(t.body.replace("{nom}",sel?.nm||"[nom]").replace("{agent}",me?.nm||"Agent"))} style={BO}>📋</button><button onClick={()=>{if(sel){const m=t.body.replace("{nom}",sel.nm).replace("{agent}",me?.nm||"Agent");if(t.ch==="email"&&sel.em)openMail(sel.em,"CBD — Geosiste",m);else if(t.ch==="whatsapp")openWA(sel.wa,m);else openIG(sel.ig);}}} style={{...BO,color:"#34d399"}}>📨{sel?` → ${sel.nm}`:""}</button></div></>}</div>)}
+        <button onClick={()=>{const n=prompt("Nom du template ?");if(n)setTpls(p=>[...p,{id:"c"+Date.now(),nm:n,ch:"email",lang:"fr",body:"Bonjour {nom},\n\n\n\nCordialement,\n{agent}"}]);}} style={{...BG,width:"100%",marginTop:8,background:"linear-gradient(135deg,#2dd4bf,#14b8a6)"}}>+ Nouveau template</button>
+      </div>}
+
+      {/* ─── TOOLS: Produits ─── */}
+      {section==="tools"&&subPage==="products"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <button onClick={()=>setSubPage("")} style={{...BO,marginBottom:12,fontSize:10}}>← Outils</button>
+        <SecTitle c="#fb923c" ic="🏷️" t="Catalogue Produits"/>
+        {[...new Set(PRODS.map(p=>p.cat))].map(cat=><div key={cat} style={{marginBottom:16}}><h3 style={{fontSize:14,fontWeight:700,color:"#fb923c",marginBottom:8}}>{cat}</h3>{PRODS.filter(p=>p.cat===cat).map(p=><div key={p.id} style={GC}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:24}}>{p.ic}</span><span style={{fontWeight:700,fontSize:13}}>{p.nm}</span></div><span style={{fontWeight:800,color:"#34d399",fontSize:14}}>{p.pr}{p.u}</span></div><div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>{p.desc}</div><div style={{display:"flex",gap:4,marginTop:5,flexWrap:"wrap"}}>{p.cbd&&<span style={bdg("#34d399")}>CBD {p.cbd}</span>}{p.thc&&<span style={bdg("#475569")}>THC {p.thc}</span>}{p.mol&&<span style={bdg("#fbbf24")}>{p.mol}</span>}</div><div style={{display:"flex",gap:4,marginTop:8}}><button onClick={()=>genPDF(p)} style={BO}>📄 Fiche</button><button onClick={()=>navigator.clipboard.writeText(`${p.nm} — ${p.desc} — ${p.pr}${p.u}`)} style={BO}>📋</button><button onClick={()=>{setSection("agent");sendMsg(`Fais un pitch commercial détaillé pour notre produit ${p.nm} (${p.cat}) à ${p.pr}${p.u}`);}} style={{...BO,color:"#34d399"}}>🤖 Pitch IA</button></div></div>)}</div>)}
+      </div>}
+
+      {/* ─── TOOLS: Pappers ─── */}
+      {section==="tools"&&subPage==="pappers"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <button onClick={()=>setSubPage("")} style={{...BO,marginBottom:12,fontSize:10}}>← Outils</button>
+        <SecTitle c="#818cf8" ic="🏢" t="Pappers — Recherche Libre"/>
+        <div style={GC}>
+          <input value={papQ} onChange={e=>setPapQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&searchPap()} placeholder="Tapez librement : nom, activité, ville, SIREN, mot-clé..." style={{...I,marginBottom:10,fontSize:14}}/>
+          <details style={{marginBottom:10}}><summary style={{cursor:"pointer",fontSize:11,color:"#818cf8",fontWeight:600}}>＋ Filtres optionnels (tous libres)</summary><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:8}}>{[{k:"naf",p:"Code NAF"},{k:"dept",p:"Département"},{k:"ville",p:"Ville"},{k:"forme_juridique",p:"Forme juridique"},{k:"ca_min",p:"CA min (€)"},{k:"ca_max",p:"CA max (€)"},{k:"effectif_min",p:"Effectif min"},{k:"effectif_max",p:"Effectif max"},{k:"date_creation_min",p:"Créée après"},{k:"date_creation_max",p:"Créée avant"}].map(f=><input key={f.k} value={papF[f.k]} onChange={e=>setPapF(p=>({...p,[f.k]:e.target.value}))} placeholder={f.p} style={{...I,fontSize:10,padding:"7px 10px"}}/>)}</div></details>
+          <button onClick={()=>searchPap(1)} disabled={papLoad||!conn.pappers.key} style={{...BG,width:"100%",background:"linear-gradient(135deg,#818cf8,#6366f1)"}}>{papLoad?"🔍 Recherche...":"🔍 Rechercher"}</button>
+          {!conn.pappers.key&&<p style={{fontSize:10,color:"#f87171",marginTop:6,textAlign:"center"}}>⚠️ Configurez votre clé dans Outils → Connexions</p>}
+        </div>
+        {papRes.map((r,i)=><div key={i} style={GC}><div style={{fontWeight:700,fontSize:13}}>🏢 {r.nom_entreprise||r.denomination}</div><div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>SIREN: {r.siren||"—"} · NAF: {r.code_naf||"—"} {r.libelle_code_naf?`(${r.libelle_code_naf})`:""}</div><div style={{fontSize:10,color:"#475569",marginTop:2}}>📍 {r.siege?.adresse||"—"}, {r.siege?.code_postal||""} {r.siege?.ville||""}</div>{r.siege?.telephone&&<div style={{fontSize:10,color:"#60a5fa"}}>📞 {r.siege.telephone}</div>}{r.siege?.email&&<div style={{fontSize:10,color:"#60a5fa"}}>📧 {r.siege.email}</div>}{r.chiffre_affaires&&<div style={{fontSize:10,color:"#fbbf24"}}>💰 {Number(r.chiffre_affaires).toLocaleString()}€</div>}{r.effectifs&&<div style={{fontSize:10,color:"#475569"}}>👥 {r.effectifs}</div>}{r.dirigeants?.[0]&&<div style={{fontSize:10,color:"#94a3b8"}}>👤 {r.dirigeants[0].prenom} {r.dirigeants[0].nom} — {r.dirigeants[0].qualite}</div>}<button onClick={()=>importPap(r)} style={{...BG,marginTop:8,fontSize:10,width:"100%"}}>📥 Importer dans le CRM</button></div>)}
+        {papRes.length>0&&papRes.length%20===0&&<button onClick={()=>searchPap(papPg+1)} style={{...BO,width:"100%",marginTop:6}}>Charger plus...</button>}
+      </div>}
+
+      {/* ─── TOOLS: Import ─── */}
+      {section==="tools"&&subPage==="import"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <button onClick={()=>setSubPage("")} style={{...BO,marginBottom:12,fontSize:10}}>← Outils</button>
+        <SecTitle c="#f472b6" ic="📥" t="Import Fichiers"/>
+        <div style={{...GC,textAlign:"center",padding:28,borderStyle:"dashed",cursor:"pointer"}} onClick={()=>fileRef.current?.click()}><input ref={fileRef} type="file" accept=".csv,.tsv,.json,.xlsx,.xls,.pdf,.txt" onChange={handleFile} style={{display:"none"}}/><div style={{fontSize:40,marginBottom:8}}>📂</div><div style={{fontSize:14,fontWeight:700,color:"#f472b6",marginBottom:4}}>Cliquez pour choisir un fichier</div><div style={{fontSize:11,color:"#475569"}}>CSV · XLS · XLSX · JSON · PDF · TXT</div>{impFile&&<div style={{fontSize:11,color:"#34d399",marginTop:10}}>📎 {impFile.name}</div>}</div>
+        {impSt&&<div style={{...GC,fontSize:11,color:impSt.startsWith("❌")?"#f87171":"#34d399"}}>{impSt}</div>}
+        {impPrev.length>0&&<><div style={GC}><div style={{fontSize:12,fontWeight:600,color:"#f472b6",marginBottom:8}}>Aperçu — {impPrev.length} prospects</div><div style={{maxHeight:280,overflowY:"auto"}}>{impPrev.slice(0,20).map((p,i)=><div key={i} style={{padding:"6px 0",borderBottom:"1px solid rgba(52,211,153,0.06)",fontSize:10}}><div style={{fontWeight:600}}>{FL[p.co]||"🌍"} {p.nm}</div><div style={{color:"#475569"}}>{p.em||"—"} · {p.wa||"—"}</div></div>)}{impPrev.length>20&&<div style={{fontSize:10,color:"#475569",padding:6}}>+{impPrev.length-20} de plus</div>}</div></div><div style={{display:"flex",gap:6}}><button onClick={()=>{setImpPrev([]);setImpFile(null);setImpSt("");}} style={{...BO,flex:1}}>Annuler</button><button onClick={confirmImport} style={{...BG,flex:2,background:"linear-gradient(135deg,#f472b6,#ec4899)"}}>✅ Importer {impPrev.length} prospects</button></div></>}
+        <div style={{...GC,marginTop:14}}><div style={{fontSize:11,fontWeight:600,color:"#f472b6",marginBottom:6}}>ℹ️ Nettoyage automatique</div><div style={{fontSize:10,color:"#94a3b8",lineHeight:1.7}}>Détection auto des colonnes (nom, email, téléphone, pays...) · Suppression des doublons · Normalisation téléphones (+33) · Détection pays par indicatif · Extraction des tags</div></div>
+      </div>}
+
+      {/* ─── TOOLS: Connexions ─── */}
+      {section==="tools"&&subPage==="connect"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <button onClick={()=>setSubPage("")} style={{...BO,marginBottom:12,fontSize:10}}>← Outils</button>
+        <SecTitle c="#60a5fa" ic="🔌" t="Connexions"/>
+
+        <div style={GC}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:22}}>🤖</span><strong style={{fontSize:14}}>Claude API</strong></div><div style={{display:"flex",alignItems:"center",gap:6}}><div style={dot(conn.claude.status)}/><span style={{fontSize:10}}>{conn.claude.status==="connected"?"OK":conn.claude.status==="error"?"Erreur":"—"}</span></div></div><p style={{fontSize:10,color:"#475569",marginBottom:8}}>Clé dans Vercel → Settings → <code style={{color:"#60a5fa"}}>ANTHROPIC_API_KEY</code></p><button onClick={testClaude} disabled={conn.claude.status==="testing"} style={{...BG,width:"100%"}}>🧪 Tester</button></div>
+
+        <div style={GC}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:22}}>🏢</span><strong style={{fontSize:14}}>Pappers</strong></div><div style={dot(conn.pappers.status)}/></div><input value={conn.pappers.key} onChange={e=>setConn(p=>({...p,pappers:{...p.pappers,key:e.target.value}}))} placeholder="Clé API Pappers" type="password" style={{...I,marginBottom:8}}/><button onClick={testPappers} style={{...BG,width:"100%",background:"linear-gradient(135deg,#818cf8,#6366f1)"}}>🧪 Tester</button></div>
+
+        <div style={GC}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:22}}>📧</span><strong style={{fontSize:14}}>Email</strong></div><div style={dot(conn.email.status)}/></div>{conn.email.accounts.map((a,i)=><div key={a.id} style={{display:"flex",gap:4,marginBottom:6}}><input value={a.em} onChange={e=>setConn(p=>({...p,email:{...p.email,accounts:p.email.accounts.map(x=>x.id===a.id?{...x,em:e.target.value}:x)}}))} placeholder="email@..." style={{...I,flex:1,fontSize:11}}/><input value={a.label} onChange={e=>setConn(p=>({...p,email:{...p.email,accounts:p.email.accounts.map(x=>x.id===a.id?{...x,label:e.target.value}:x)}}))} placeholder="Label" style={{...I,width:70,fontSize:11}}/><button onClick={()=>setConn(p=>({...p,email:{...p.email,accounts:p.email.accounts.map(x=>({...x,active:x.id===a.id}))}}))} style={{...BO,fontSize:9,color:a.active?"#22c55e":"#475569"}}>{a.active?"✓":"○"}</button>{i>0&&<button onClick={()=>setConn(p=>({...p,email:{...p.email,accounts:p.email.accounts.filter(x=>x.id!==a.id)}}))} style={{...BO,fontSize:9,color:"#f87171"}}>✕</button>}</div>)}<div style={{display:"flex",gap:4}}><button onClick={()=>setConn(p=>({...p,email:{...p.email,accounts:[...p.email.accounts,{id:Date.now(),em:"",label:"",active:false}]}}))} style={{...BO,flex:1,fontSize:10}}>+ Compte</button><button onClick={testEmail} style={{...BG,flex:1,fontSize:10}}>🧪 Tester</button></div></div>
+
+        <div style={GC}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:22}}>💬</span><strong style={{fontSize:14}}>WhatsApp</strong></div><div style={dot(conn.whatsapp.status)}/></div><input value={conn.whatsapp.num} onChange={e=>setConn(p=>({...p,whatsapp:{...p.whatsapp,num:e.target.value}}))} placeholder="+33 6 XX XX XX XX" style={{...I,marginBottom:8}}/><button onClick={testWA} style={{...BG,width:"100%",background:"linear-gradient(135deg,#22c55e,#16a34a)"}}>🧪 Tester</button></div>
+
+        <div style={GC}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:22}}>📸</span><strong style={{fontSize:14}}>Instagram</strong></div><div style={dot(conn.instagram.status)}/></div>{conn.instagram.accounts.map((a,i)=><div key={a.id} style={{display:"flex",gap:4,marginBottom:6}}><input value={a.handle} onChange={e=>setConn(p=>({...p,instagram:{...p.instagram,accounts:p.instagram.accounts.map(x=>x.id===a.id?{...x,handle:e.target.value}:x)}}))} placeholder="@handle" style={{...I,flex:1,fontSize:11}}/><input value={a.label} onChange={e=>setConn(p=>({...p,instagram:{...p.instagram,accounts:p.instagram.accounts.map(x=>x.id===a.id?{...x,label:e.target.value}:x)}}))} placeholder="Label" style={{...I,width:70,fontSize:11}}/><button onClick={()=>setConn(p=>({...p,instagram:{...p.instagram,accounts:p.instagram.accounts.map(x=>({...x,active:x.id===a.id}))}}))} style={{...BO,fontSize:9,color:a.active?"#22c55e":"#475569"}}>{a.active?"✓":"○"}</button>{i>0&&<button onClick={()=>setConn(p=>({...p,instagram:{...p.instagram,accounts:p.instagram.accounts.filter(x=>x.id!==a.id)}}))} style={{...BO,fontSize:9,color:"#f87171"}}>✕</button>}</div>)}<div style={{display:"flex",gap:4}}><button onClick={()=>setConn(p=>({...p,instagram:{...p.instagram,accounts:[...p.instagram.accounts,{id:Date.now(),handle:"",label:"",active:false}]}}))} style={{...BO,flex:1,fontSize:10}}>+ Compte</button><button onClick={testIG} style={{...BG,flex:1,fontSize:10,background:"linear-gradient(135deg,#f472b6,#ec4899)"}}>🧪 Tester</button></div></div>
+
+        <div style={GC}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:22}}>🔔</span><strong style={{fontSize:14}}>Push</strong></div><button onClick={()=>{"Notification"in window&&Notification.requestPermission().then(p=>{if(p==="granted")addN("✅ Push activées");});}} style={{...BG,width:"100%",background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#000"}}>{"Notification"in window&&Notification.permission==="granted"?"✅ Activées":"Activer les notifications"}</button></div>
+      </div>}
+
+      {/* ═════════════════════════════════════════════════════════ */}
+      {/* ═══ SECTION: CONFIG ═══ */}
+      {/* ═════════════════════════════════════════════════════════ */}
+      {section==="config"&&<div style={{padding:14,height:"calc(100vh - 126px)",overflowY:"auto"}}>
+        <SecTitle c="#94a3b8" ic="⚙️" t="Configuration"/>
+        <div style={GC}><div style={{fontSize:13,fontWeight:700,color:"#34d399",marginBottom:10}}>👥 Utilisateurs ({users.length})</div>{users.map(u=><div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(52,211,153,0.06)",fontSize:11}}><span>{u.nm} — {u.em} <span style={bdg(u.role==="admin"?"#f87171":"#60a5fa")}>{u.role}</span></span>{u.id!==1&&<button onClick={()=>setUsers(p=>p.filter(x=>x.id!==u.id))} style={{...BO,fontSize:9,color:"#f87171"}}>✕</button>}</div>)}<button onClick={()=>{const n=prompt("Nom ?"),e=prompt("Email ?"),p=prompt("Mot de passe ?");if(n&&e&&p)setUsers(prev=>[...prev,{id:Date.now(),nm:n,em:e,pw:p,role:"user"}]);}} style={{...BO,marginTop:8,width:"100%"}}>+ Utilisateur</button></div>
+        <div style={GC}><div style={{fontSize:13,fontWeight:700,color:"#94a3b8",marginBottom:10}}>📤 Export / Backup</div><div style={{display:"flex",gap:6}}><button onClick={()=>{const c="Nom;Pays;Email;Tel;Instagram;Statut;Score;CA;Tags;Notes\n"+db.map(p=>`"${p.nm}";"${p.co}";"${p.em}";"${p.wa}";"${p.ig}";"${p.st}";${p.sc};${p.ca};"${(p.tg||[]).join(",")}";"${p.nt}"`).join("\n");const b=new Blob([c],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="geosiste-export.csv";a.click();}} style={{...BO,flex:1}}>📥 Export CSV</button><button onClick={()=>{const d=JSON.stringify({db,hist,fups,tpls},null,2);const b=new Blob([d],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="geosiste-backup.json";a.click();}} style={{...BO,flex:1}}>💾 Backup JSON</button></div></div>
+        <div style={{textAlign:"center",marginTop:24,color:"#1e293b",fontSize:9,fontFamily:"'DM Mono',monospace",letterSpacing:1}}>GEOSISTE v10 · L'Entrepôt du Chanvrier<br/>Agent Commercial IA · CRM CBD Europe</div>
+      </div>}
+
+      {/* ═══ BOTTOM NAV ═══ */}
+      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:520,display:"flex",justifyContent:"space-around",padding:"8px 0 12px",background:"rgba(2,4,9,0.92)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(52,211,153,0.08)",zIndex:100}}>
+        {[
+          {k:"dash",ic:"📊",l:"Accueil"},
+          {k:"agent",ic:"🤖",l:"Agent IA"},
+          {k:"crm",ic:"📋",l:"CRM"},
+          {k:"tools",ic:"🧰",l:"Outils"},
+          {k:"config",ic:"⚙️",l:"Config"},
+        ].map(t=>
+          <button key={t.k} onClick={()=>{setSection(t.k);setSubPage("");}} style={{background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 8px",color:section===t.k?"#34d399":"#475569",fontFamily:"'DM Sans',sans-serif"}}>
+            <span style={{fontSize:20,filter:section===t.k?"drop-shadow(0 0 6px rgba(52,211,153,0.4))":"none"}}>{t.ic}</span>
+            <span style={{fontSize:9,fontWeight:section===t.k?700:400}}>{t.l}</span>
+          </button>
+        )}
+      </div>
+
+      </div>{/* zIndex wrapper */}
+      <style>{`*{box-sizing:border-box;margin:0;padding:0;}body{margin:0;}::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-thumb{background:rgba(52,211,153,0.15);border-radius:3px;}select:focus,input:focus,textarea:focus{outline:none;border-color:rgba(52,211,153,0.3)!important;box-shadow:0 0 0 3px rgba(52,211,153,0.06)!important;}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}button{transition:all 0.12s;}button:hover{filter:brightness(1.1);}button:active{transform:scale(0.97);}details>summary{list-style:none;}details>summary::-webkit-details-marker{display:none;}input::placeholder,textarea::placeholder{color:#334155;}`}</style>
     </div>
   );
 }

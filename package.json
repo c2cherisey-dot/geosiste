@@ -1,7 +1,7 @@
 {
   "name": "geosiste",
-  "version": "8.0.0",
-  "description": "Geosiste — Agent Commercial IA + CRM CBD Europe — L'Entrepôt du Chanvrier",
+  "version": "10.0.0",
+  "description": "Geosiste v10 — Agent Commercial IA + CRM CBD Europe — L'Entrepôt du Chanvrier",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
