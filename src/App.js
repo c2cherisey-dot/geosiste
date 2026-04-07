@@ -178,7 +178,7 @@ const ScoreRing = ({ score, size = 32 }) => {
   return <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
     <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,.06)" strokeWidth={3}/>
     <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={col} strokeWidth={3} strokeDasharray={c} strokeDashoffset={c*(1-pct)} strokeLinecap="round"/>
-    <text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central" fill={col} fontSize={size>28?10:8} fontWeight={700} style={{ transform:"rotate(90deg)", transformOrigin:"center", fontFamily:"'JetBrains Mono'" }}>{s}</text>
+    <text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central" fill={col} fontSize={size>28?10:8} fontWeight={700} style={{ transform:"rotate(90deg)", transformOrigin:"center", fontFamily:"'Space Mono'" }}>{s}</text>
   </svg>;
 };
 const Dots = () => <span style={{ display:"inline-flex",gap:3 }}>{[0,1,2].map(i=><span key={i} style={{ width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`pulse 1.2s ${i*.2}s infinite` }}/>)}</span>;
@@ -857,19 +857,21 @@ export default function GeosisteCRM() {
 
   // ─── AUTH SCREEN ──────────────────────────────────────────────────────────
   if (!user) return (
-    <div style={{ minHeight:"100vh", background:"#06080d", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Outfit',sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-      <div style={{ background:"rgba(12,15,24,.9)", border:"1px solid rgba(99,102,241,.15)", borderRadius:20, padding:36, width:"90%", maxWidth:400 }}>
-        <div style={{ textAlign:"center", marginBottom:28 }}>
-          <div style={{ width:56,height:56,borderRadius:14,background:"linear-gradient(135deg,#4f46e5,#7c3aed)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 12px" }}>⚡</div>
-          <h1 style={{ fontSize:22,fontWeight:800,color:"#f1f5f9",margin:0 }}>Geosiste CRM</h1>
-          <p style={{ fontSize:11,color:"#6366f1",margin:"4px 0 0",fontFamily:"'JetBrains Mono'",letterSpacing:".08em" }}>L'ENTREPÔT DU CHANVRIER</p>
+    <div style={{ minHeight:"100vh", background:"#05060b", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',sans-serif",
+      backgroundImage:"radial-gradient(ellipse at 50% 0%, rgba(99,102,241,.08) 0%, transparent 60%)" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+      <div style={{ background:"rgba(10,12,20,.85)", border:"1px solid rgba(255,255,255,.05)", borderRadius:24, padding:40, width:"90%", maxWidth:400,
+        backdropFilter:"blur(24px)", boxShadow:"0 24px 64px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04)" }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ width:60,height:60,borderRadius:16,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,margin:"0 auto 14px",boxShadow:"0 8px 32px rgba(99,102,241,.3)" }}>⚡</div>
+          <h1 style={{ fontSize:24,fontWeight:800,color:"#f8fafc",margin:0,letterSpacing:"-.02em" }}>Geosiste CRM</h1>
+          <p style={{ fontSize:10,color:"rgba(139,92,246,.6)",margin:"6px 0 0",fontFamily:"'Space Mono'",letterSpacing:".14em",textTransform:"uppercase" }}>L'Entrepôt du Chanvrier</p>
         </div>
-        <div style={{ display:"flex",gap:2,marginBottom:20,background:"rgba(15,18,30,.6)",padding:3,borderRadius:9 }}>
+        <div style={{ display:"flex",gap:2,marginBottom:24,background:"rgba(255,255,255,.03)",padding:3,borderRadius:11,border:"1px solid rgba(255,255,255,.04)" }}>
           {["login","register"].map(m => (
             <button key={m} onClick={() => { setAuthMode(m); setAuthError(""); }}
-              style={{ flex:1,padding:"8px",borderRadius:7,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",
-                background:authMode===m?"rgba(99,102,241,.15)":"transparent",color:authMode===m?"#a5b4fc":"#64748b" }}>
+              style={{ flex:1,padding:"9px",borderRadius:9,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",transition:"all .2s",
+                background:authMode===m?"rgba(99,102,241,.12)":"transparent",color:authMode===m?"#c4b5fd":"#64748b" }}>
               {m === "login" ? "Connexion" : "Créer un compte"}
             </button>
           ))}
@@ -877,26 +879,26 @@ export default function GeosisteCRM() {
         {authMode === "register" && (
           <div style={{ marginBottom:12 }}>
             <label style={{ fontSize:10,color:"#64748b",display:"block",marginBottom:3 }}>Nom complet</label>
-            <input style={{ width:"100%",padding:"10px 13px",borderRadius:9,border:"1px solid rgba(99,102,241,.15)",background:"rgba(8,10,18,.9)",color:"#d1d5db",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" }}
+            <input style={{ width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)",color:"#e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box",transition:"border .2s" }}
               value={loginForm.name} onChange={e => setLoginForm(p=>({...p,name:e.target.value}))} placeholder="Jean Dupont"/>
           </div>
         )}
         <div style={{ marginBottom:12 }}>
-          <label style={{ fontSize:10,color:"#64748b",display:"block",marginBottom:3 }}>Email</label>
-          <input style={{ width:"100%",padding:"10px 13px",borderRadius:9,border:"1px solid rgba(99,102,241,.15)",background:"rgba(8,10,18,.9)",color:"#d1d5db",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" }}
+          <label style={{ fontSize:10,color:"#64748b",display:"block",marginBottom:4 }}>Email</label>
+          <input style={{ width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)",color:"#e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box",transition:"border .2s" }}
             value={loginForm.email} onChange={e => setLoginForm(p=>({...p,email:e.target.value}))} placeholder="email@exemple.com"
             onKeyDown={e => e.key === "Enter" && (authMode === "login" ? doLogin() : doRegister())}/>
         </div>
-        <div style={{ marginBottom:16 }}>
-          <label style={{ fontSize:10,color:"#64748b",display:"block",marginBottom:3 }}>Mot de passe</label>
-          <input type="password" style={{ width:"100%",padding:"10px 13px",borderRadius:9,border:"1px solid rgba(99,102,241,.15)",background:"rgba(8,10,18,.9)",color:"#d1d5db",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" }}
+        <div style={{ marginBottom:18 }}>
+          <label style={{ fontSize:10,color:"#64748b",display:"block",marginBottom:4 }}>Mot de passe</label>
+          <input type="password" style={{ width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)",color:"#e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box",transition:"border .2s" }}
             value={loginForm.password} onChange={e => setLoginForm(p=>({...p,password:e.target.value}))} placeholder="••••••"
             onKeyDown={e => e.key === "Enter" && (authMode === "login" ? doLogin() : doRegister())}/>
         </div>
-        {authError && <div style={{ fontSize:11,color:"#ef4444",marginBottom:12,textAlign:"center" }}>{authError}</div>}
+        {authError && <div style={{ fontSize:11,color:"#ef4444",marginBottom:14,textAlign:"center" }}>{authError}</div>}
         <button onClick={authMode === "login" ? doLogin : doRegister}
-          style={{ width:"100%",padding:"12px",borderRadius:10,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,fontFamily:"inherit",
-            background:"linear-gradient(135deg,#4f46e5,#7c3aed)",color:"#fff" }}>
+          style={{ width:"100%",padding:"13px",borderRadius:12,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,fontFamily:"inherit",
+            background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",boxShadow:"0 4px 20px rgba(99,102,241,.3)",transition:"all .2s" }}>
           {authMode === "login" ? "Se connecter" : "Créer mon compte"}
         </button>
         <p style={{ fontSize:10,color:"#475569",textAlign:"center",marginTop:16 }}>
@@ -908,38 +910,44 @@ export default function GeosisteCRM() {
 
   // ─── MAIN CRM ─────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight:"100vh",background:"#06080d",color:"#d1d5db",fontFamily:"'Outfit',sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+    <div style={{ minHeight:"100vh",background:"#05060b",color:"#c8cdd5",fontFamily:"'DM Sans',sans-serif" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
       <style>{`
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-        @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-        .C{background:rgba(12,15,24,.85);border:1px solid rgba(99,102,241,.08);border-radius:14px;padding:20px;backdrop-filter:blur(16px);animation:fadeUp .3s ease}
-        .B{padding:9px 18px;border-radius:9px;border:none;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
-        .B:active{transform:scale(.97)}
-        .BP{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff}
-        .BS{background:linear-gradient(135deg,#059669,#10b981);color:#fff}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+        @keyframes glow{0%,100%{box-shadow:0 0 12px rgba(99,102,241,.1)}50%{box-shadow:0 0 24px rgba(99,102,241,.2)}}
+        .C{background:rgba(10,12,20,.75);border:1px solid rgba(255,255,255,.04);border-radius:16px;padding:22px;backdrop-filter:blur(20px) saturate(1.2);animation:fadeUp .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 32px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.03)}
+        .B{padding:9px 18px;border-radius:10px;border:none;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:all .2s cubic-bezier(.16,1,.3,1);display:inline-flex;align-items:center;gap:6px;letter-spacing:.01em}
+        .B:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.3)}
+        .B:active{transform:scale(.97) translateY(0)}
+        .BP{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;box-shadow:0 2px 12px rgba(99,102,241,.25)}
+        .BS{background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 2px 12px rgba(16,185,129,.2)}
         .BD{background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff}
-        .BG{background:transparent;border:1px solid rgba(99,102,241,.2);color:#a5b4fc}
-        .BG:hover{background:rgba(99,102,241,.08)}
-        .I{padding:9px 13px;border-radius:9px;border:1px solid rgba(99,102,241,.15);background:rgba(8,10,18,.9);color:#d1d5db;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box}
-        .I:focus{border-color:#6366f1}
-        .S{padding:9px 13px;border-radius:9px;border:1px solid rgba(99,102,241,.15);background:rgba(8,10,18,.9);color:#d1d5db;font-size:12px;font-family:inherit;outline:none}
-        .T{display:inline-flex;align-items:center;padding:3px 9px;border-radius:16px;font-size:10px;font-weight:600}
-        *{scrollbar-width:thin;scrollbar-color:rgba(99,102,241,.2) transparent}
+        .BG{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);color:#94a3b8}
+        .BG:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1);color:#e2e8f0}
+        .I{padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.4);color:#e2e8f0;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;transition:border .2s}
+        .I:focus{border-color:rgba(99,102,241,.4);box-shadow:0 0 0 3px rgba(99,102,241,.08)}
+        .S{padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.4);color:#e2e8f0;font-size:12px;font-family:inherit;outline:none;transition:border .2s}
+        .S:focus{border-color:rgba(99,102,241,.4)}
+        .T{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:.02em}
+        *{scrollbar-width:thin;scrollbar-color:rgba(99,102,241,.15) transparent}
+        ::selection{background:rgba(99,102,241,.3)}
+        table tr:hover{background:rgba(99,102,241,.03) !important}
       `}</style>
 
       {/* ═══ HEADER ═══════════════════════════════════════════════════════════ */}
-      <header style={{ background:"rgba(6,8,13,.92)",backdropFilter:"blur(24px)",borderBottom:"1px solid rgba(99,102,241,.08)",position:"sticky",top:0,zIndex:100 }}>
-        <div style={{ maxWidth:1500,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:54,padding:"0 16px" }}>
-          <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-            <div style={{ width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#4f46e5,#7c3aed)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16 }}>⚡</div>
+      <header style={{ background:"rgba(5,6,11,.85)",backdropFilter:"blur(32px) saturate(1.3)",borderBottom:"1px solid rgba(255,255,255,.04)",position:"sticky",top:0,zIndex:100 }}>
+        <div style={{ maxWidth:1500,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56,padding:"0 20px" }}>
+          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <div style={{ width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:"0 2px 12px rgba(99,102,241,.3)" }}>⚡</div>
             <div>
-              <div style={{ fontSize:13,fontWeight:700,color:"#f1f5f9" }}>Geosiste CRM</div>
-              <div style={{ fontSize:8,color:"#6366f1",fontFamily:"'JetBrains Mono'",letterSpacing:".08em",textTransform:"uppercase" }}>L'Entrepôt du Chanvrier</div>
+              <div style={{ fontSize:14,fontWeight:700,color:"#f8fafc",letterSpacing:"-.01em" }}>Geosiste CRM</div>
+              <div style={{ fontSize:8,color:"rgba(139,92,246,.7)",fontFamily:"'Space Mono'",letterSpacing:".12em",textTransform:"uppercase" }}>L'Entrepôt du Chanvrier</div>
             </div>
           </div>
 
-          <nav style={{ display:"flex",gap:2,background:"rgba(15,18,30,.6)",padding:2,borderRadius:9 }}>
+          <nav style={{ display:"flex",gap:1,background:"rgba(255,255,255,.03)",padding:3,borderRadius:11,border:"1px solid rgba(255,255,255,.04)" }}>
             {[
               { id:"dashboard",label:"Dashboard",icon:"📊" },
               { id:"prospects",label:"Prospects",icon:"👥" },
@@ -952,16 +960,17 @@ export default function GeosisteCRM() {
               ...(isAdmin ? [{ id:"admin",label:"Admin",icon:"👑" }] : []),
             ].map(t => (
               <button key={t.id} onClick={() => setView(t.id)}
-                style={{ padding:"7px 12px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit",
-                  display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",
-                  background:view===t.id?"rgba(99,102,241,.15)":"transparent",color:view===t.id?"#a5b4fc":"#64748b" }}>
+                style={{ padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit",
+                  display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",transition:"all .2s",
+                  background:view===t.id?"rgba(99,102,241,.12)":"transparent",color:view===t.id?"#c4b5fd":"#64748b",
+                  boxShadow:view===t.id?"inset 0 1px 0 rgba(255,255,255,.05)":"none" }}>
                 {t.icon}<span>{t.label}</span>
               </button>
             ))}
           </nav>
 
           <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-            {agentRunning && <span style={{ display:"flex",alignItems:"center",gap:4,fontSize:9,color:"#10b981",fontFamily:"'JetBrains Mono'" }}>
+            {agentRunning && <span style={{ display:"flex",alignItems:"center",gap:4,fontSize:9,color:"#10b981",fontFamily:"'Space Mono'" }}>
               <span style={{ width:6,height:6,borderRadius:"50%",background:"#10b981",animation:"pulse 1s infinite" }}/>SCAN
             </span>}
             <span style={{ fontSize:11,color:"#94a3b8" }}>👤 {user.name}</span>
@@ -985,7 +994,7 @@ export default function GeosisteCRM() {
               ].map((k,i) => (
                 <div key={i} className="C" style={{ textAlign:"center",padding:14 }}>
                   <div style={{ fontSize:9,color:"#64748b",textTransform:"uppercase",letterSpacing:".1em",marginBottom:4 }}>{k.label}</div>
-                  <div style={{ fontSize:24,fontWeight:800,color:k.color,fontFamily:"'JetBrains Mono'" }}>{k.value}</div>
+                  <div style={{ fontSize:24,fontWeight:800,color:k.color,fontFamily:"'Space Mono'" }}>{k.value}</div>
                 </div>
               ))}
             </div>
@@ -995,7 +1004,7 @@ export default function GeosisteCRM() {
                 <h3 style={{ fontSize:13,fontWeight:700,color:"#f1f5f9",marginBottom:12 }}>Activité Récente</h3>
                 {activities.slice(0,12).map(a => (
                   <div key={a.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid rgba(99,102,241,.04)",fontSize:11 }}>
-                    <span style={{ color:"#475569",fontFamily:"'JetBrains Mono'",fontSize:9,minWidth:80 }}>{new Date(a.date).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                    <span style={{ color:"#475569",fontFamily:"'Space Mono'",fontSize:9,minWidth:80 }}>{new Date(a.date).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
                     <span className="T" style={{ background:"rgba(99,102,241,.1)",color:"#a5b4fc" }}>{a.userName}</span>
                     <span style={{ color:"#94a3b8" }}>{a.type} — {a.prospectName}</span>
                     {a.comment && <span style={{ color:"#64748b",fontStyle:"italic" }}>"{a.comment.slice(0,40)}"</span>}
@@ -1023,7 +1032,7 @@ export default function GeosisteCRM() {
                     <div key={c.code} style={{ display:"flex",alignItems:"center",gap:6 }}>
                       <span style={{ fontSize:16 }}>{c.flag}</span>
                       <span style={{ fontSize:11,color:"#94a3b8" }}>{c.name}</span>
-                      <span style={{ fontSize:12,fontWeight:700,color:"#a5b4fc",fontFamily:"'JetBrains Mono'" }}>{c.count}</span>
+                      <span style={{ fontSize:12,fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{c.count}</span>
                     </div>
                   ))}
                 </div>
@@ -1074,13 +1083,13 @@ export default function GeosisteCRM() {
                 <div style={{ display:"flex",alignItems:"center",gap:4 }}>
                   <span style={{ fontSize:10,color:"#64748b" }}>Score min:</span>
                   <input type="range" min={0} max={90} step={10} value={filters.minScore} onChange={e => setFilters(p=>({...p,minScore:parseInt(e.target.value)}))} style={{ width:80 }}/>
-                  <span style={{ fontSize:10,color:"#a5b4fc",fontFamily:"'JetBrains Mono'" }}>{filters.minScore}</span>
+                  <span style={{ fontSize:10,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{filters.minScore}</span>
                 </div>
                 {allTags.length > 0 && <select className="S" value={filters.tag} onChange={e => setFilters(p=>({...p,tag:e.target.value}))}>
                   <option value="all">Tous tags</option>
                   {allTags.map(t => <option key={t} value={t}>🏷️ {t}</option>)}
                 </select>}
-                <span style={{ marginLeft:"auto",fontSize:11,color:"#64748b",fontFamily:"'JetBrains Mono'" }}>{filtered.length} / {myProspects.length}</span>
+                <span style={{ marginLeft:"auto",fontSize:11,color:"#64748b",fontFamily:"'Space Mono'" }}>{filtered.length} / {myProspects.length}</span>
                 <button className="B BP" disabled={agentRunning} onClick={() => runEnrichment("qualify")} style={{ fontSize:9,padding:"5px 10px" }}>
                   {agentRunning ? <Dots/> : `🧠 Qualifier (${filtered.filter(p=>!p.qualification).length})`}
                 </button>
@@ -1109,7 +1118,7 @@ export default function GeosisteCRM() {
                         <td style={{ padding:"4px",color:"#94a3b8",fontSize:9 }}>{p.city}</td>
                         <td style={{ padding:"4px",color:"#94a3b8",fontSize:9 }}>{p.countryName}</td>
                         <td style={{ padding:"4px" }}><ScoreRing score={p.score} size={24}/></td>
-                        <td style={{ padding:"4px",color:"#06b6d4",fontSize:9,fontFamily:"'JetBrains Mono'" }}>{p.organicTraffic ? p.organicTraffic.toLocaleString() : "—"}</td>
+                        <td style={{ padding:"4px",color:"#06b6d4",fontSize:9,fontFamily:"'Space Mono'" }}>{p.organicTraffic ? p.organicTraffic.toLocaleString() : "—"}</td>
                         <td style={{ padding:"4px" }}>{p.email ? <span style={{color:"#10b981"}}>✓</span> : <span style={{color:"#64748b"}}>—</span>}</td>
                         <td style={{ padding:"4px" }}>{p.phone ? <span style={{color:"#10b981"}}>✓</span> : <span style={{color:"#64748b"}}>—</span>}</td>
                         <td style={{ padding:"4px" }}><span className="T" style={{ background:`${PIPELINE.find(s=>s.id===p.stage)?.color}15`,color:PIPELINE.find(s=>s.id===p.stage)?.color,fontSize:8 }}>{PIPELINE.find(s=>s.id===p.stage)?.icon}</span></td>
@@ -1138,7 +1147,7 @@ export default function GeosisteCRM() {
                 <div key={stage.id} style={{ flex:"0 0 190px",background:"rgba(12,15,24,.6)",borderRadius:12,padding:10,border:`1px solid ${stage.color}15`,minHeight:400 }}>
                   <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,padding:"5px 8px",borderRadius:7,background:`${stage.color}12` }}>
                     <span style={{ fontSize:11,fontWeight:700,color:stage.color }}>{stage.icon} {stage.label}</span>
-                    <span style={{ fontSize:10,fontWeight:700,color:stage.color,fontFamily:"'JetBrains Mono'",background:`${stage.color}18`,padding:"1px 7px",borderRadius:8 }}>{sp.length}</span>
+                    <span style={{ fontSize:10,fontWeight:700,color:stage.color,fontFamily:"'Space Mono'",background:`${stage.color}18`,padding:"1px 7px",borderRadius:8 }}>{sp.length}</span>
                   </div>
                   {sp.map(p => (
                     <div key={p.id} onClick={() => { setSelected(p); setAiOutput(""); setModalTab("info"); setCommentText(""); }}
@@ -1175,13 +1184,13 @@ export default function GeosisteCRM() {
                   {top50.map((p,i) => (
                     <tr key={p.id} style={{ borderBottom:"1px solid rgba(99,102,241,.04)",cursor:"pointer",background:i<3?"rgba(245,158,11,.03)":"transparent" }}
                       onClick={() => { setSelected(p); setAiOutput(""); setModalTab("info"); setCommentText(""); }}>
-                      <td style={{ padding:"4px 6px",fontWeight:800,color:i<3?"#fbbf24":"#64748b",fontFamily:"'JetBrains Mono'",fontSize:12 }}>{i+1}</td>
+                      <td style={{ padding:"4px 6px",fontWeight:800,color:i<3?"#fbbf24":"#64748b",fontFamily:"'Space Mono'",fontSize:12 }}>{i+1}</td>
                       <td style={{ padding:"4px",fontSize:13 }}>{p.flag}</td>
                       <td style={{ padding:"4px",fontWeight:600,color:"#e2e8f0" }}>{p.name}</td>
                       <td style={{ padding:"4px",color:"#94a3b8",fontSize:9 }}>{p.city}</td>
                       <td style={{ padding:"4px",color:"#94a3b8",fontSize:9 }}>{p.countryName}</td>
                       <td style={{ padding:"4px" }}><ScoreRing score={p.score} size={24}/></td>
-                      <td style={{ padding:"4px",color:"#06b6d4",fontSize:9,fontFamily:"'JetBrains Mono'" }}>{p.organicTraffic ? p.organicTraffic.toLocaleString() : "—"}</td>
+                      <td style={{ padding:"4px",color:"#06b6d4",fontSize:9,fontFamily:"'Space Mono'" }}>{p.organicTraffic ? p.organicTraffic.toLocaleString() : "—"}</td>
                       <td style={{ padding:"4px",color:"#f59e0b",fontSize:9 }}>{p.rating ? `⭐${p.rating}` : "—"}</td>
                       <td style={{ padding:"4px" }}>{p.email ? <span style={{color:"#10b981",fontSize:10}}>✓</span> : <span style={{color:"#475569"}}>✗</span>}</td>
                       <td style={{ padding:"4px" }}>{p.phone ? <span style={{color:"#10b981",fontSize:10}}>✓</span> : <span style={{color:"#475569"}}>✗</span>}</td>
@@ -1428,7 +1437,7 @@ export default function GeosisteCRM() {
                   <p style={{ fontSize:9,color:"#64748b",margin:0 }}>Enrichit automatiquement les prospects avec site web (trafic, mots-clés, autorité)</p>
                 </div>
                 <div style={{ display:"flex",gap:6,alignItems:"center" }}>
-                  <span style={{ fontSize:11,color:"#f59e0b",fontFamily:"'JetBrains Mono'" }}>{myProspects.filter(p=>!p.semrushData&&p.website).length} à enrichir</span>
+                  <span style={{ fontSize:11,color:"#f59e0b",fontFamily:"'Space Mono'" }}>{myProspects.filter(p=>!p.semrushData&&p.website).length} à enrichir</span>
                   <button className="B" disabled={enrichRunning} onClick={() => runEnrichment("semrush")}
                     style={{ background:"linear-gradient(135deg,#f59e0b,#f97316)",color:"#fff" }}>
                     {enrichRunning ? <Dots/> : "⚡ Enrichir SEMrush"}
@@ -1441,7 +1450,7 @@ export default function GeosisteCRM() {
             {agentLog.length > 0 && (
               <div className="C">
                 <h4 style={{ fontSize:12,fontWeight:600,color:"#f1f5f9",marginBottom:8 }}>Terminal — {prospects.length} prospects au total</h4>
-                <div style={{ maxHeight:250,overflowY:"auto",fontFamily:"'JetBrains Mono'",fontSize:10,background:"rgba(0,0,0,.3)",borderRadius:8,padding:10 }}>
+                <div style={{ maxHeight:250,overflowY:"auto",fontFamily:"'Space Mono'",fontSize:10,background:"rgba(0,0,0,.3)",borderRadius:8,padding:10 }}>
                   {agentLog.map(l => <div key={l.id} style={{ padding:"2px 0",color:"#94a3b8" }}>{l.msg}</div>)}
                 </div>
               </div>
@@ -1455,7 +1464,7 @@ export default function GeosisteCRM() {
             <div className="C" style={{ marginBottom:16 }}>
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12 }}>
                 <h3 style={{ fontSize:15,fontWeight:700,color:"#f1f5f9" }}>📄 Devis</h3>
-                <div style={{ fontSize:13,fontWeight:700,color:"#10b981",fontFamily:"'JetBrains Mono'" }}>Total: {stats.quotesTotal.toLocaleString()}€</div>
+                <div style={{ fontSize:13,fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>Total: {stats.quotesTotal.toLocaleString()}€</div>
               </div>
               {quotes.length === 0 ? (
                 <div style={{ color:"#475569",textAlign:"center",padding:30,fontSize:12 }}>Aucun devis. Ouvrez un prospect → onglet Devis pour en créer un.</div>
@@ -1465,7 +1474,7 @@ export default function GeosisteCRM() {
                     <div style={{ fontSize:13,fontWeight:600,color:"#e2e8f0" }}>{q.prospectName}</div>
                     <div style={{ fontSize:10,color:"#64748b" }}>{q.items.length} produit(s) — par {q.userName} — {new Date(q.date).toLocaleDateString("fr-FR")}</div>
                   </div>
-                  <div style={{ fontSize:16,fontWeight:700,color:"#10b981",fontFamily:"'JetBrains Mono'" }}>{q.total.toLocaleString()}€</div>
+                  <div style={{ fontSize:16,fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>{q.total.toLocaleString()}€</div>
                   <span className="T" style={{ background:q.status==="draft"?"rgba(245,158,11,.15)":"rgba(16,185,129,.15)",color:q.status==="draft"?"#fbbf24":"#10b981" }}>{q.status==="draft"?"Brouillon":"Envoyé"}</span>
                   {q.sageRef && <span className="T" style={{ background:"rgba(99,102,241,.1)",color:"#a5b4fc" }}>Sage: {q.sageRef}</span>}
                 </div>
@@ -1501,15 +1510,15 @@ export default function GeosisteCRM() {
                         <div style={{ fontSize:10,color:"#64748b" }}>{u.email} — Inscrit le {new Date(u.createdAt).toLocaleDateString("fr-FR")}</div>
                       </div>
                       <div style={{ textAlign:"center",padding:"0 12px" }}>
-                        <div style={{ fontSize:18,fontWeight:700,color:"#a5b4fc",fontFamily:"'JetBrains Mono'" }}>{uProspects.length}</div>
+                        <div style={{ fontSize:18,fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{uProspects.length}</div>
                         <div style={{ fontSize:8,color:"#64748b" }}>Prospects</div>
                       </div>
                       <div style={{ textAlign:"center",padding:"0 12px" }}>
-                        <div style={{ fontSize:18,fontWeight:700,color:"#10b981",fontFamily:"'JetBrains Mono'" }}>{uWon}</div>
+                        <div style={{ fontSize:18,fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>{uWon}</div>
                         <div style={{ fontSize:8,color:"#64748b" }}>Gagnés</div>
                       </div>
                       <div style={{ textAlign:"center",padding:"0 12px" }}>
-                        <div style={{ fontSize:18,fontWeight:700,color:"#06b6d4",fontFamily:"'JetBrains Mono'" }}>{uActivities.length}</div>
+                        <div style={{ fontSize:18,fontWeight:700,color:"#06b6d4",fontFamily:"'Space Mono'" }}>{uActivities.length}</div>
                         <div style={{ fontSize:8,color:"#64748b" }}>Actions</div>
                       </div>
                     </div>
@@ -1524,7 +1533,7 @@ export default function GeosisteCRM() {
                 <div style={{ maxHeight:500,overflowY:"auto" }}>
                   {activities.slice(0,100).map(a => (
                     <div key={a.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid rgba(99,102,241,.04)",fontSize:11 }}>
-                      <span style={{ color:"#475569",fontFamily:"'JetBrains Mono'",fontSize:9,minWidth:100 }}>{new Date(a.date).toLocaleString("fr-FR")}</span>
+                      <span style={{ color:"#475569",fontFamily:"'Space Mono'",fontSize:9,minWidth:100 }}>{new Date(a.date).toLocaleString("fr-FR")}</span>
                       <span className="T" style={{ background:"rgba(99,102,241,.1)",color:"#a5b4fc",minWidth:60,justifyContent:"center" }}>{a.userName}</span>
                       <span className="T" style={{ background:"rgba(245,158,11,.1)",color:"#fbbf24" }}>{a.type}</span>
                       <span style={{ color:"#e2e8f0",fontWeight:500 }}>{a.prospectName}</span>
@@ -1548,7 +1557,7 @@ export default function GeosisteCRM() {
                           const c = up.filter(p => p.stage === s.id).length;
                           return c > 0 ? <div key={s.id} style={{ display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2 }}>
                             <span style={{ color:"#94a3b8" }}>{s.icon} {s.label}</span>
-                            <span style={{ color:s.color,fontWeight:700,fontFamily:"'JetBrains Mono'" }}>{c}</span>
+                            <span style={{ color:s.color,fontWeight:700,fontFamily:"'Space Mono'" }}>{c}</span>
                           </div> : null;
                         })}
                       </div>
@@ -1580,9 +1589,9 @@ export default function GeosisteCRM() {
                     { label:"Doublons",value:duplicates.length,color:duplicates.length>0?"#ef4444":"#10b981",pct:duplicates.length+" groupes" },
                   ].map((k,i) => (
                     <div key={i} className="C" style={{ textAlign:"center",padding:12 }}>
-                      <div style={{ fontSize:22,fontWeight:800,color:k.color,fontFamily:"'JetBrains Mono'" }}>{k.value}</div>
+                      <div style={{ fontSize:22,fontWeight:800,color:k.color,fontFamily:"'Space Mono'" }}>{k.value}</div>
                       <div style={{ fontSize:9,color:"#64748b",marginTop:2 }}>{k.label}</div>
-                      <div style={{ fontSize:10,color:k.color,fontFamily:"'JetBrains Mono'" }}>{k.pct}</div>
+                      <div style={{ fontSize:10,color:k.color,fontFamily:"'Space Mono'" }}>{k.pct}</div>
                     </div>
                   ))}
                 </div>
@@ -1595,7 +1604,7 @@ export default function GeosisteCRM() {
                 <div style={{ fontSize:28,marginBottom:6 }}>📧</div>
                 <h4 style={{ fontSize:13,fontWeight:700,color:"#10b981",marginBottom:4 }}>Trouver les Emails</h4>
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Hunter.io — Recherche emails</p>
-                <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'JetBrains Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.email&&p.website).length}</div>
+                <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.email&&p.website).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>sans email</div>
                 <button className="B BS" disabled={enrichRunning} onClick={() => runEnrichment("noemail")} style={{ width:"100%" }}>
                   {enrichRunning ? <Dots/> : "📧 Lancer"}
@@ -1605,7 +1614,7 @@ export default function GeosisteCRM() {
                 <div style={{ fontSize:28,marginBottom:6 }}>🏢</div>
                 <h4 style={{ fontSize:13,fontWeight:700,color:"#8b5cf6",marginBottom:4 }}>Données Entreprise</h4>
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Pappers — SIRET, CA, dirigeant</p>
-                <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'JetBrains Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.pappersData&&!p.siret&&p.country==="FR").length}</div>
+                <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.pappersData&&!p.siret&&p.country==="FR").length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>FR sans Pappers</div>
                 <button className="B BP" disabled={enrichRunning} onClick={() => runEnrichment("nocompany")} style={{ width:"100%" }}>
                   {enrichRunning ? <Dots/> : "🏢 Lancer"}
@@ -1615,7 +1624,7 @@ export default function GeosisteCRM() {
                 <div style={{ fontSize:28,marginBottom:6 }}>📊</div>
                 <h4 style={{ fontSize:13,fontWeight:700,color:"#06b6d4",marginBottom:4 }}>SEMrush Analytics</h4>
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Trafic, mots-clés, autorité</p>
-                <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'JetBrains Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.semrushData&&p.website).length}</div>
+                <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.semrushData&&p.website).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>sans SEMrush</div>
                 <button className="B" disabled={enrichRunning} onClick={() => runEnrichment("semrush")}
                   style={{ width:"100%",background:"linear-gradient(135deg,#06b6d4,#0891b2)",color:"#fff" }}>
@@ -1626,7 +1635,7 @@ export default function GeosisteCRM() {
                 <div style={{ fontSize:28,marginBottom:6 }}>🧠</div>
                 <h4 style={{ fontSize:13,fontWeight:700,color:"#f59e0b",marginBottom:4 }}>Qualification IA</h4>
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Score + priorité + stratégie</p>
-                <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'JetBrains Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.qualification).length}</div>
+                <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.qualification).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>non qualifiés</div>
                 <button className="B" disabled={enrichRunning} onClick={() => runEnrichment("qualify")}
                   style={{ width:"100%",background:"linear-gradient(135deg,#f59e0b,#f97316)",color:"#fff" }}>
@@ -1656,7 +1665,7 @@ export default function GeosisteCRM() {
             {enrichLog.length > 0 && (
               <div className="C">
                 <h4 style={{ fontSize:12,fontWeight:600,color:"#f1f5f9",marginBottom:8 }}>Terminal Enrichissement</h4>
-                <div style={{ maxHeight:200,overflowY:"auto",fontFamily:"'JetBrains Mono'",fontSize:10,background:"rgba(0,0,0,.3)",borderRadius:8,padding:10 }}>
+                <div style={{ maxHeight:200,overflowY:"auto",fontFamily:"'Space Mono'",fontSize:10,background:"rgba(0,0,0,.3)",borderRadius:8,padding:10 }}>
                   {enrichLog.map(l => <div key={l.id} style={{ padding:"2px 0",color:"#94a3b8" }}>{l.msg}</div>)}
                 </div>
               </div>
@@ -1676,7 +1685,7 @@ export default function GeosisteCRM() {
                   const maxCount = Math.max(...analytics.scoreRanges.map(x=>x.count),1);
                   return (
                     <div key={r.label} style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4 }}>
-                      <span style={{ fontSize:10,fontWeight:700,color:r.color,fontFamily:"'JetBrains Mono'" }}>{r.count}</span>
+                      <span style={{ fontSize:10,fontWeight:700,color:r.color,fontFamily:"'Space Mono'" }}>{r.count}</span>
                       <div style={{ width:"100%",background:`${r.color}30`,borderRadius:4,height:`${Math.max(4,(r.count/maxCount)*100)}px`,transition:"height .5s" }}>
                         <div style={{ width:"100%",height:"100%",background:r.color,borderRadius:4,opacity:.8 }}/>
                       </div>
@@ -1685,7 +1694,7 @@ export default function GeosisteCRM() {
                   );
                 })}
               </div>
-              <div style={{ textAlign:"center",fontSize:11,color:"#94a3b8" }}>Score moyen: <b style={{ color:"#a5b4fc",fontFamily:"'JetBrains Mono'" }}>{analytics.avgScore}/100</b></div>
+              <div style={{ textAlign:"center",fontSize:11,color:"#94a3b8" }}>Score moyen: <b style={{ color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{analytics.avgScore}/100</b></div>
             </div>
 
             {/* Funnel */}
@@ -1696,10 +1705,10 @@ export default function GeosisteCRM() {
                   <span style={{ minWidth:100,fontSize:11,color:s.color,fontWeight:600 }}>{s.icon} {s.label}</span>
                   <div style={{ flex:1,height:24,background:"rgba(255,255,255,.03)",borderRadius:6,overflow:"hidden" }}>
                     <div style={{ height:"100%",background:`${s.color}40`,borderRadius:6,width:`${Math.max(2,parseFloat(s.pct))}%`,transition:"width .5s",display:"flex",alignItems:"center",paddingLeft:8 }}>
-                      <span style={{ fontSize:10,fontWeight:700,color:s.color,fontFamily:"'JetBrains Mono'" }}>{s.count}</span>
+                      <span style={{ fontSize:10,fontWeight:700,color:s.color,fontFamily:"'Space Mono'" }}>{s.count}</span>
                     </div>
                   </div>
-                  <span style={{ fontSize:10,color:"#64748b",fontFamily:"'JetBrains Mono'",minWidth:40,textAlign:"right" }}>{s.pct}%</span>
+                  <span style={{ fontSize:10,color:"#64748b",fontFamily:"'Space Mono'",minWidth:40,textAlign:"right" }}>{s.pct}%</span>
                 </div>
               ))}
             </div>
@@ -1718,7 +1727,7 @@ export default function GeosisteCRM() {
                     {analytics.byCountry.map(c => (
                       <tr key={c.code} style={{ borderBottom:"1px solid rgba(99,102,241,.04)" }}>
                         <td style={{ padding:"6px 8px" }}>{c.flag} {c.name}</td>
-                        <td style={{ padding:"6px 8px",fontWeight:700,color:"#a5b4fc",fontFamily:"'JetBrains Mono'" }}>{c.total}</td>
+                        <td style={{ padding:"6px 8px",fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{c.total}</td>
                         <td style={{ padding:"6px 8px",color:"#8b5cf6" }}>{c.qualified}</td>
                         <td style={{ padding:"6px 8px",color:"#ef4444" }}>{c.hot}</td>
                         <td style={{ padding:"6px 8px",color:"#10b981" }}>{c.withEmail}</td>
@@ -1738,7 +1747,7 @@ export default function GeosisteCRM() {
                 {Object.entries(analytics.byType).sort((a,b)=>b[1]-a[1]).map(([type,count]) => (
                   <div key={type} style={{ display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid rgba(99,102,241,.04)" }}>
                     <span style={{ fontSize:11,color:"#94a3b8" }}>{type}</span>
-                    <span style={{ fontSize:12,fontWeight:700,color:"#a5b4fc",fontFamily:"'JetBrains Mono'" }}>{count}</span>
+                    <span style={{ fontSize:12,fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{count}</span>
                   </div>
                 ))}
               </div>
@@ -1754,7 +1763,7 @@ export default function GeosisteCRM() {
                   <div key={d.label} style={{ marginBottom:8 }}>
                     <div style={{ display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2 }}>
                       <span style={{ color:"#94a3b8" }}>{d.label}</span>
-                      <span style={{ color:d.color,fontFamily:"'JetBrains Mono'" }}>{d.value}/{d.total} ({((d.value/d.total)*100).toFixed(0)}%)</span>
+                      <span style={{ color:d.color,fontFamily:"'Space Mono'" }}>{d.value}/{d.total} ({((d.value/d.total)*100).toFixed(0)}%)</span>
                     </div>
                     <div style={{ height:6,background:"rgba(255,255,255,.04)",borderRadius:3 }}>
                       <div style={{ height:"100%",borderRadius:3,background:d.color,width:`${(d.value/d.total)*100}%`,transition:"width .5s" }}/>
@@ -1768,9 +1777,10 @@ export default function GeosisteCRM() {
 
         {/* ═══ PROSPECT DETAIL MODAL ══════════════════════════════════════════ */}
         {selected && (
-          <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.75)",backdropFilter:"blur(10px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200 }}
+          <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(16px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200 }}
             onClick={() => setSelected(null)}>
-            <div style={{ background:"#0a0d16",border:"1px solid rgba(99,102,241,.15)",borderRadius:18,width:"92%",maxWidth:750,maxHeight:"88vh",overflow:"auto",padding:24 }}
+            <div style={{ background:"rgba(8,10,18,.95)",border:"1px solid rgba(255,255,255,.06)",borderRadius:22,width:"92%",maxWidth:750,maxHeight:"88vh",overflow:"auto",padding:28,
+              boxShadow:"0 32px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04)" }}
               onClick={e => e.stopPropagation()}>
 
               {/* Header */}
@@ -1826,7 +1836,7 @@ export default function GeosisteCRM() {
                     <div style={{ background:"rgba(139,92,246,.06)",borderRadius:10,padding:12,marginBottom:14,border:"1px solid rgba(139,92,246,.1)" }}>
                       <div style={{ fontSize:10,fontWeight:700,color:"#8b5cf6",marginBottom:8 }}>🏢 Données Entreprise (Pappers)</div>
                       <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:11 }}>
-                        {selected.siret && <div><span style={{color:"#64748b"}}>SIRET:</span> <span style={{color:"#e2e8f0",fontFamily:"'JetBrains Mono'"}}>{selected.siret}</span></div>}
+                        {selected.siret && <div><span style={{color:"#64748b"}}>SIRET:</span> <span style={{color:"#e2e8f0",fontFamily:"'Space Mono'"}}>{selected.siret}</span></div>}
                         {selected.dirigeant && <div><span style={{color:"#64748b"}}>Dirigeant:</span> <span style={{color:"#e2e8f0"}}>{selected.dirigeant}</span></div>}
                         {selected.effectif && <div><span style={{color:"#64748b"}}>Effectif:</span> <span style={{color:"#e2e8f0"}}>{selected.effectif}</span></div>}
                         {selected.chiffreAffaires && <div><span style={{color:"#64748b"}}>CA:</span> <span style={{color:"#10b981",fontWeight:700}}>{selected.chiffreAffaires}</span></div>}
@@ -1841,15 +1851,15 @@ export default function GeosisteCRM() {
                       <div style={{ fontSize:10,fontWeight:700,color:"#06b6d4",marginBottom:8 }}>📊 SEMrush Analytics</div>
                       <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,fontSize:11,marginBottom:10 }}>
                         <div style={{ textAlign:"center",background:"rgba(0,0,0,.2)",borderRadius:8,padding:8 }}>
-                          <div style={{ fontSize:18,fontWeight:700,color:"#10b981",fontFamily:"'JetBrains Mono'" }}>{(selected.organicTraffic||0).toLocaleString()}</div>
+                          <div style={{ fontSize:18,fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>{(selected.organicTraffic||0).toLocaleString()}</div>
                           <div style={{ fontSize:8,color:"#64748b" }}>Trafic/mois</div>
                         </div>
                         <div style={{ textAlign:"center",background:"rgba(0,0,0,.2)",borderRadius:8,padding:8 }}>
-                          <div style={{ fontSize:18,fontWeight:700,color:"#a5b4fc",fontFamily:"'JetBrains Mono'" }}>{selected.organicKeywords||0}</div>
+                          <div style={{ fontSize:18,fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{selected.organicKeywords||0}</div>
                           <div style={{ fontSize:8,color:"#64748b" }}>Mots-clés</div>
                         </div>
                         <div style={{ textAlign:"center",background:"rgba(0,0,0,.2)",borderRadius:8,padding:8 }}>
-                          <div style={{ fontSize:18,fontWeight:700,color:"#f59e0b",fontFamily:"'JetBrains Mono'" }}>{selected.authorityScore||0}</div>
+                          <div style={{ fontSize:18,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'" }}>{selected.authorityScore||0}</div>
                           <div style={{ fontSize:8,color:"#64748b" }}>Autorité</div>
                         </div>
                       </div>
@@ -2067,7 +2077,7 @@ export default function GeosisteCRM() {
                           <span style={{ fontSize:11,fontWeight:600,color:"#34d399" }}>Message Généré</span>
                           <button className="B BG" style={{ padding:"3px 8px",fontSize:9 }} onClick={() => navigator.clipboard.writeText(aiOutput)}>📋 Copier</button>
                         </div>
-                        <pre style={{ fontSize:11,color:"#cbd5e1",whiteSpace:"pre-wrap",margin:0,fontFamily:"'Outfit'",lineHeight:1.5 }}>{aiOutput}</pre>
+                        <pre style={{ fontSize:11,color:"#cbd5e1",whiteSpace:"pre-wrap",margin:0,fontFamily:"'DM Sans'",lineHeight:1.5 }}>{aiOutput}</pre>
                       </div>
                     )}
                   </div>
@@ -2092,7 +2102,7 @@ export default function GeosisteCRM() {
                       </select>
                       <input type="number" className="I" style={{ flex:"0 0 70px" }} min={1} value={item.qty}
                         onChange={e => { const next = [...quoteItems]; next[idx].qty = parseInt(e.target.value)||1; setQuoteItems(next); }}/>
-                      <span style={{ fontSize:12,fontWeight:600,color:"#10b981",fontFamily:"'JetBrains Mono'",minWidth:70,textAlign:"right" }}>
+                      <span style={{ fontSize:12,fontWeight:600,color:"#10b981",fontFamily:"'Space Mono'",minWidth:70,textAlign:"right" }}>
                         {((ALL_PRODUCTS.find(p=>p.id===item.productId)?.price||0)*item.qty).toLocaleString()}€
                       </span>
                       <button className="B BD" style={{ padding:"4px 8px",fontSize:10 }}
@@ -2102,7 +2112,7 @@ export default function GeosisteCRM() {
                   <button className="B BG" style={{ fontSize:10,marginBottom:12 }}
                     onClick={() => setQuoteItems(prev => [...prev, { productId:"", qty:1 }])}>+ Ajouter un produit</button>
                   <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderTop:"1px solid rgba(99,102,241,.08)" }}>
-                    <div style={{ fontSize:18,fontWeight:700,color:"#10b981",fontFamily:"'JetBrains Mono'" }}>
+                    <div style={{ fontSize:18,fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>
                       Total: {quoteItems.reduce((a,i) => a + (ALL_PRODUCTS.find(p=>p.id===i.productId)?.price||0)*i.qty, 0).toLocaleString()}€
                     </div>
                     <button className="B BS" onClick={() => createQuote(selected)}
@@ -2115,7 +2125,7 @@ export default function GeosisteCRM() {
                       {quotes.filter(q => q.prospectId === selected.id).map(q => (
                         <div key={q.id} style={{ display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid rgba(99,102,241,.04)",fontSize:11 }}>
                           <span style={{ color:"#94a3b8" }}>#{q.id.slice(-6)} — {new Date(q.date).toLocaleDateString("fr-FR")} — {q.items.length} produit(s)</span>
-                          <span style={{ fontWeight:700,color:"#10b981",fontFamily:"'JetBrains Mono'" }}>{q.total.toLocaleString()}€</span>
+                          <span style={{ fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>{q.total.toLocaleString()}€</span>
                         </div>
                       ))}
                     </div>
@@ -2133,7 +2143,7 @@ export default function GeosisteCRM() {
                     id: i.date, userName: i.by || "Système", type: i.type, comment: i.comment, date: i.date
                   }))].sort((a,b) => new Date(b.date) - new Date(a.date)).map((a,i) => (
                     <div key={i} style={{ display:"flex",gap:8,padding:"8px 0",borderBottom:"1px solid rgba(99,102,241,.04)" }}>
-                      <span style={{ fontSize:9,color:"#475569",fontFamily:"'JetBrains Mono'",minWidth:90 }}>{new Date(a.date).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                      <span style={{ fontSize:9,color:"#475569",fontFamily:"'Space Mono'",minWidth:90 }}>{new Date(a.date).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
                       <span className="T" style={{ background:"rgba(99,102,241,.1)",color:"#a5b4fc" }}>{a.userName}</span>
                       <span className="T" style={{ background:"rgba(245,158,11,.1)",color:"#fbbf24" }}>{a.type}</span>
                       {a.comment && <span style={{ fontSize:11,color:"#94a3b8" }}>{a.comment}</span>}
@@ -2158,7 +2168,7 @@ export default function GeosisteCRM() {
         {showAddModal && (
           <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.75)",backdropFilter:"blur(10px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200 }}
             onClick={() => setShowAddModal(false)}>
-            <div style={{ background:"#0a0d16",border:"1px solid rgba(99,102,241,.15)",borderRadius:18,width:"90%",maxWidth:480,padding:24 }}
+            <div style={{ background:"rgba(8,10,18,.95)",border:"1px solid rgba(255,255,255,.06)",borderRadius:22,boxShadow:"0 32px 80px rgba(0,0,0,.6)",width:"90%",maxWidth:480,padding:24 }}
               onClick={e => e.stopPropagation()}>
               <h3 style={{ fontSize:16,fontWeight:700,color:"#f1f5f9",marginBottom:14 }}>➕ Ajouter un Prospect</h3>
               <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
