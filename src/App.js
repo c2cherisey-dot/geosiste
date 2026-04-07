@@ -909,6 +909,11 @@ export default function GeosisteCRM() {
                     <span className="T" style={{ background:`${PIPELINE.find(s=>s.id===selected.stage)?.color}18`,color:PIPELINE.find(s=>s.id===selected.stage)?.color }}>
                       {PIPELINE.find(s=>s.id===selected.stage)?.icon} {PIPELINE.find(s=>s.id===selected.stage)?.label}</span>
                     {selected.assignedName && <span className="T" style={{ background:"rgba(245,158,11,.1)",color:"#fbbf24" }}>👤 {selected.assignedName}</span>}
+                    {selected.qualification?.priority && <span className="T" style={{
+                      background: selected.qualification.priority==="hot"?"rgba(239,68,68,.15)":selected.qualification.priority==="warm"?"rgba(245,158,11,.15)":"rgba(100,116,139,.15)",
+                      color: selected.qualification.priority==="hot"?"#ef4444":selected.qualification.priority==="warm"?"#f59e0b":"#64748b" }}>
+                      {selected.qualification.priority==="hot"?"🔥 HOT":selected.qualification.priority==="warm"?"🌤️ WARM":"❄️ COLD"}
+                    </span>}
                   </div>
                 </div>
                 <button onClick={() => setSelected(null)} style={{ background:"rgba(239,68,68,.1)",border:"none",color:"#f87171",width:28,height:28,borderRadius:7,cursor:"pointer",fontSize:14 }}>✕</button>
@@ -916,11 +921,11 @@ export default function GeosisteCRM() {
 
               {/* Tabs */}
               <div style={{ display:"flex",gap:2,marginBottom:14,background:"rgba(15,18,30,.6)",padding:2,borderRadius:8 }}>
-                {["info","action","quote","history"].map(t => (
+                {["info","qualify","action","quote","history"].map(t => (
                   <button key={t} style={{ flex:1,padding:"7px",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit",
                     background:modalTab===t?"rgba(99,102,241,.15)":"transparent",color:modalTab===t?"#a5b4fc":"#64748b" }}
                     onClick={() => setModalTab(t)}>
-                    {t==="info"?"📋 Infos":t==="action"?"✅ Action":t==="quote"?"📄 Devis":"📜 Historique"}
+                    {t==="info"?"📋 Infos":t==="qualify"?"🧠 Qualification":t==="action"?"✅ Action":t==="quote"?"📄 Devis":"📜 Historique"}
                   </button>
                 ))}
               </div>
@@ -962,6 +967,96 @@ export default function GeosisteCRM() {
                         <option value="">Non assigné</option>
                         {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab: Qualification IA */}
+              {modalTab === "qualify" && (
+                <div>
+                  <button className="B BP" disabled={loading==="qualify"} onClick={async () => {
+                    setLoading("qualify");
+                    const q = await ai(
+                      `${AI_SYS}\n\nAnalyse ce prospect et qualifie-le en détail. Réponds UNIQUEMENT en JSON valide sans backticks:\n{"score":1-100,"priority":"hot|warm|cold","estimated_monthly_volume":"...","lifetime_value":"...","best_channel":"email|whatsapp|phone|instagram","approach_strategy":"...","recommended_products":[{"name":"...","reason":"..."}],"talking_points":["..."],"objection_risks":["..."],"competitor_risk":"low|medium|high","red_flags":["..."]}`,
+                      `Qualifie en détail: ${selected.name} (${selected.type}) à ${selected.city}, ${selected.countryName}. Tel: ${selected.phone||"N/A"}. Site: ${selected.website||"N/A"}. ${selected.notes||""} ${selected.rating ? "Note Google: "+selected.rating+"/5" : ""} ${selected.reviewCount ? "("+selected.reviewCount+" avis)" : ""}`,
+                      true
+                    );
+                    if (q) {
+                      setProspects(prev => prev.map(p => p.id === selected.id ? { ...p, qualification: q, score: q.score } : p));
+                      setSelected(prev => prev ? { ...prev, qualification: q, score: q.score } : null);
+                      addActivity(selected.id, selected.name, "Qualification IA", `Score: ${q.score}/100 — ${q.priority}`);
+                    }
+                    setLoading("");
+                  }} style={{ marginBottom:16 }}>
+                    {loading==="qualify" ? <Dots/> : "🧠 Lancer la Qualification IA"}
+                  </button>
+
+                  {selected.qualification ? (
+                    <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
+                      <div style={{ background:"rgba(139,92,246,.06)",borderRadius:8,padding:10 }}>
+                        <div style={{ fontSize:9,color:"#64748b" }}>Priorité</div>
+                        <span className="T" style={{ 
+                          background: selected.qualification.priority==="hot"?"rgba(239,68,68,.15)":selected.qualification.priority==="warm"?"rgba(245,158,11,.15)":"rgba(100,116,139,.15)",
+                          color: selected.qualification.priority==="hot"?"#ef4444":selected.qualification.priority==="warm"?"#f59e0b":"#64748b",
+                          fontSize:12,padding:"4px 12px" }}>
+                          {selected.qualification.priority==="hot"?"🔥 HOT":selected.qualification.priority==="warm"?"🌤️ WARM":"❄️ COLD"}
+                        </span>
+                      </div>
+                      <div style={{ background:"rgba(139,92,246,.06)",borderRadius:8,padding:10 }}>
+                        <div style={{ fontSize:9,color:"#64748b" }}>Volume Mensuel Estimé</div>
+                        <div style={{ fontSize:14,fontWeight:700,color:"#10b981" }}>{selected.qualification.estimated_monthly_volume}</div>
+                      </div>
+                      <div style={{ background:"rgba(139,92,246,.06)",borderRadius:8,padding:10 }}>
+                        <div style={{ fontSize:9,color:"#64748b" }}>Meilleur Canal</div>
+                        <div style={{ fontSize:13,color:"#e2e8f0" }}>📧 {selected.qualification.best_channel}</div>
+                      </div>
+                      <div style={{ background:"rgba(139,92,246,.06)",borderRadius:8,padding:10 }}>
+                        <div style={{ fontSize:9,color:"#64748b" }}>Lifetime Value</div>
+                        <div style={{ fontSize:14,fontWeight:700,color:"#06b6d4" }}>{selected.qualification.lifetime_value}</div>
+                      </div>
+                      <div style={{ gridColumn:"1/-1",background:"rgba(139,92,246,.06)",borderRadius:8,padding:10 }}>
+                        <div style={{ fontSize:9,color:"#64748b",marginBottom:4 }}>Stratégie d'approche</div>
+                        <div style={{ fontSize:12,color:"#d1d5db",lineHeight:1.5 }}>{selected.qualification.approach_strategy}</div>
+                      </div>
+                      {selected.qualification.recommended_products?.length > 0 && (
+                        <div style={{ gridColumn:"1/-1",background:"rgba(16,185,129,.06)",borderRadius:8,padding:10,border:"1px solid rgba(16,185,129,.1)" }}>
+                          <div style={{ fontSize:9,color:"#64748b",marginBottom:6 }}>Produits Recommandés</div>
+                          {selected.qualification.recommended_products.map((p,i) => (
+                            <div key={i} style={{ fontSize:12,color:"#94a3b8",marginBottom:4 }}>
+                              • <b style={{ color:"#10b981" }}>{p.name}</b> — {p.reason}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {selected.qualification.talking_points?.length > 0 && (
+                        <div style={{ gridColumn:"1/-1",background:"rgba(99,102,241,.06)",borderRadius:8,padding:10,border:"1px solid rgba(99,102,241,.1)" }}>
+                          <div style={{ fontSize:9,color:"#64748b",marginBottom:6 }}>Points d'Accroche</div>
+                          {selected.qualification.talking_points.map((t,i) => (
+                            <div key={i} style={{ fontSize:12,color:"#a5b4fc",marginBottom:3 }}>💡 {t}</div>
+                          ))}
+                        </div>
+                      )}
+                      {selected.qualification.objection_risks?.length > 0 && (
+                        <div style={{ gridColumn:"1/-1",background:"rgba(245,158,11,.06)",borderRadius:8,padding:10 }}>
+                          <div style={{ fontSize:9,color:"#64748b",marginBottom:6 }}>Risques d'Objection</div>
+                          {selected.qualification.objection_risks.map((o,i) => (
+                            <div key={i} style={{ fontSize:11,color:"#fbbf24",marginBottom:2 }}>⚠️ {o}</div>
+                          ))}
+                        </div>
+                      )}
+                      {selected.qualification.red_flags?.length > 0 && (
+                        <div style={{ gridColumn:"1/-1",background:"rgba(239,68,68,.06)",borderRadius:8,padding:10 }}>
+                          <div style={{ fontSize:9,color:"#64748b",marginBottom:6 }}>Red Flags</div>
+                          {selected.qualification.red_flags.map((r,i) => (
+                            <div key={i} style={{ fontSize:11,color:"#f87171",marginBottom:2 }}>🚩 {r}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ color:"#475569",textAlign:"center",padding:30,fontSize:12 }}>
+                      Cliquez sur "Lancer la Qualification IA" pour analyser ce prospect en détail.
                     </div>
                   )}
                 </div>
