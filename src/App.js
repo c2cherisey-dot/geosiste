@@ -366,6 +366,9 @@ export default function GeosisteCRM() {
   const doLogout = () => { setUser(null); LS.del("crm_user"); setView("dashboard"); };
 
   const isAdmin = user?.role === "admin";
+  const canScan = isAdmin || !["noscan","readonly"].includes(user?.permissions);
+  const canEnrich = isAdmin || !["noenrich","readonly","noscan"].includes(user?.permissions);
+  const canEdit = isAdmin || user?.permissions !== "readonly";
 
   // ─── CRM FUNCTIONS ────────────────────────────────────────────────────────
   const addActivity = useCallback((prospectId, prospectName, type, comment) => {
@@ -865,15 +868,20 @@ export default function GeosisteCRM() {
   // ─── BULK ENRICHMENT ──────────────────────────────────────────────────────
   const [enrichLog, setEnrichLog] = useState([]);
   const [enrichRunning, setEnrichRunning] = useState(false);
+  const enrichRef = useRef({ running: false });
+
+  const stopEnrichment = () => { enrichRef.current.running = false; setEnrichRunning(false); };
 
   const runEnrichment = async (type) => {
-    setEnrichRunning(true); setEnrichLog([]);
+    enrichRef.current.running = true;
+    setEnrichRunning(true); setEnrichLog([{ id:Date.now(), msg:`▶ Démarrage ${type}...` }]);
     const targets = type === "noemail" ? myProspects.filter(p => !p.email && p.website) :
       type === "nocompany" ? myProspects.filter(p => !p.pappersData && !p.siret && p.country === "FR") :
       type === "semrush" ? myProspects.filter(p => !p.semrushData && p.website) :
       myProspects.filter(p => !p.qualification);
     let done = 0;
     for (const p of targets.slice(0, 30)) {
+      if (!enrichRef.current.running) { setEnrichLog(prev => [{ id:Date.now(), msg:`⏹ Arrêté après ${done} prospects` },...prev]); break; }
       done++;
       if (type === "noemail") {
         setEnrichLog(prev => [{ id:Date.now(), msg:`📧 ${done}/${Math.min(30,targets.length)} Email: ${p.name}` },...prev].slice(0,50));
@@ -917,7 +925,8 @@ export default function GeosisteCRM() {
       }
       await new Promise(r => setTimeout(r, 100));
     }
-    setEnrichLog(prev => [{ id:Date.now(), msg:`🏁 Terminé ! ${done} prospects enrichis` },...prev]);
+    if (enrichRef.current.running) setEnrichLog(prev => [{ id:Date.now(), msg:`🏁 Terminé ! ${done} prospects enrichis` },...prev]);
+    enrichRef.current.running = false;
     setEnrichRunning(false);
   };
 
@@ -1662,7 +1671,10 @@ export default function GeosisteCRM() {
             {/* Agent Log */}
             {agentLog.length > 0 && (
               <div className="C">
-                <h4 style={{ fontSize:12,fontWeight:600,color:"#f1f5f9",marginBottom:8 }}>Terminal — {prospects.length} prospects au total</h4>
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
+                  <h4 style={{ fontSize:12,fontWeight:600,color:"#f1f5f9" }}>Terminal — {prospects.length} prospects au total</h4>
+                  {agentRunning && <button className="B BD" style={{ fontSize:10,padding:"5px 12px" }} onClick={() => { agentRef.current.running=false; setAgentRunning(false); }}>⏹ Arrêter le scan</button>}
+                </div>
                 <div style={{ maxHeight:250,overflowY:"auto",fontFamily:"'Space Mono'",fontSize:10,background:"rgba(0,0,0,.3)",borderRadius:8,padding:10 }}>
                   {agentLog.map(l => <div key={l.id} style={{ padding:"2px 0",color:"#94a3b8" }}>{l.msg}</div>)}
                 </div>
@@ -1709,31 +1721,73 @@ export default function GeosisteCRM() {
 
             {adminTab === "team" && (
               <div className="C">
-                <h3 style={{ fontSize:14,fontWeight:700,color:"#f1f5f9",marginBottom:16 }}>👥 Gestion de l'Équipe</h3>
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+                  <h3 style={{ fontSize:14,fontWeight:700,color:"#f1f5f9" }}>👥 Gestion de l'Équipe</h3>
+                  <button className="B BP" style={{ fontSize:10 }} onClick={() => {
+                    const name = prompt("Nom de l'employé:");
+                    if (!name) return;
+                    const email = prompt("Email:");
+                    if (!email) return;
+                    const pwd = prompt("Mot de passe:");
+                    if (!pwd) return;
+                    const perms = prompt("Permissions (all / readonly / noscan):", "all");
+                    const newU = { id:`u${Date.now()}`, name, email, password:pwd, role:"employee", permissions:perms||"all", createdAt:new Date().toISOString() };
+                    setUsers(prev => [...prev, newU]);
+                    if (supaOk) supa.upsert("crm_users", newU);
+                    addActivity("system","Admin","Employé ajouté",`${name} (${email})`);
+                  }}>➕ Ajouter un employé</button>
+                </div>
                 {users.map(u => {
                   const uProspects = prospects.filter(p => p.assignedTo === u.id);
                   const uActivities = activities.filter(a => a.userId === u.id);
                   const uWon = uProspects.filter(p => p.stage === "won").length;
                   return (
-                    <div key={u.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:"1px solid rgba(99,102,241,.04)" }}>
+                    <div key={u.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,.03)" }}>
                       <div style={{ width:36,height:36,borderRadius:9,background:u.role==="admin"?"linear-gradient(135deg,#f59e0b,#f97316)":"linear-gradient(135deg,#6366f1,#8b5cf6)",
                         display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:700 }}>{u.name[0]}</div>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontSize:13,fontWeight:600,color:"#e2e8f0" }}>{u.name} {u.role==="admin" && <span className="T" style={{ background:"rgba(245,158,11,.15)",color:"#fbbf24",marginLeft:6 }}>Admin</span>}</div>
-                        <div style={{ fontSize:10,color:"#64748b" }}>{u.email} — Inscrit le {new Date(u.createdAt).toLocaleDateString("fr-FR")}</div>
+                        <div style={{ fontSize:13,fontWeight:600,color:"#e2e8f0" }}>
+                          {u.name}
+                          {u.role==="admin" && <span className="T" style={{ background:"rgba(245,158,11,.15)",color:"#fbbf24",marginLeft:6 }}>Admin</span>}
+                          <span className="T" style={{ background:"rgba(99,102,241,.1)",color:"#a5b4fc",marginLeft:4,fontSize:8 }}>{u.permissions||"all"}</span>
+                        </div>
+                        <div style={{ fontSize:10,color:"#64748b" }}>{u.email} — {new Date(u.createdAt).toLocaleDateString("fr-FR")}</div>
                       </div>
-                      <div style={{ textAlign:"center",padding:"0 12px" }}>
-                        <div style={{ fontSize:18,fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{uProspects.length}</div>
-                        <div style={{ fontSize:8,color:"#64748b" }}>Prospects</div>
+                      <div style={{ textAlign:"center",padding:"0 8px" }}>
+                        <div style={{ fontSize:16,fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{uProspects.length}</div>
+                        <div style={{ fontSize:7,color:"#64748b" }}>Prospects</div>
                       </div>
-                      <div style={{ textAlign:"center",padding:"0 12px" }}>
-                        <div style={{ fontSize:18,fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>{uWon}</div>
-                        <div style={{ fontSize:8,color:"#64748b" }}>Gagnés</div>
+                      <div style={{ textAlign:"center",padding:"0 8px" }}>
+                        <div style={{ fontSize:16,fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>{uWon}</div>
+                        <div style={{ fontSize:7,color:"#64748b" }}>Gagnés</div>
                       </div>
-                      <div style={{ textAlign:"center",padding:"0 12px" }}>
-                        <div style={{ fontSize:18,fontWeight:700,color:"#06b6d4",fontFamily:"'Space Mono'" }}>{uActivities.length}</div>
-                        <div style={{ fontSize:8,color:"#64748b" }}>Actions</div>
+                      <div style={{ textAlign:"center",padding:"0 8px" }}>
+                        <div style={{ fontSize:16,fontWeight:700,color:"#06b6d4",fontFamily:"'Space Mono'" }}>{uActivities.length}</div>
+                        <div style={{ fontSize:7,color:"#64748b" }}>Actions</div>
                       </div>
+                      {/* Permissions */}
+                      {u.role !== "admin" && (
+                        <select className="S" style={{ fontSize:9,padding:"4px 6px" }} value={u.permissions||"all"}
+                          onChange={e => {
+                            const perms = e.target.value;
+                            setUsers(prev => prev.map(x => x.id===u.id ? {...x, permissions:perms} : x));
+                            if (supaOk) supa.upsert("crm_users", {...u, permissions:perms});
+                          }}>
+                          <option value="all">Tous accès</option>
+                          <option value="noscan">Pas de scan</option>
+                          <option value="noenrich">Pas d'enrichissement</option>
+                          <option value="readonly">Lecture seule</option>
+                        </select>
+                      )}
+                      {u.role !== "admin" && (
+                        <button className="B BD" style={{ fontSize:9,padding:"4px 8px" }}
+                          onClick={() => {
+                            if (window.confirm(`Supprimer ${u.name} ?`)) {
+                              setUsers(prev => prev.filter(x => x.id !== u.id));
+                              if (supaOk) supa.del("crm_users", u.id);
+                            }
+                          }}>✕</button>
+                      )}
                     </div>
                   );
                 })}
@@ -1877,7 +1931,10 @@ export default function GeosisteCRM() {
             {/* Enrichment Log */}
             {enrichLog.length > 0 && (
               <div className="C">
-                <h4 style={{ fontSize:12,fontWeight:600,color:"#f1f5f9",marginBottom:8 }}>Terminal Enrichissement</h4>
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
+                  <h4 style={{ fontSize:12,fontWeight:600,color:"#f1f5f9" }}>Terminal Enrichissement</h4>
+                  {enrichRunning && <button className="B BD" style={{ fontSize:10,padding:"5px 12px" }} onClick={stopEnrichment}>⏹ Arrêter</button>}
+                </div>
                 <div style={{ maxHeight:200,overflowY:"auto",fontFamily:"'Space Mono'",fontSize:10,background:"rgba(0,0,0,.3)",borderRadius:8,padding:10 }}>
                   {enrichLog.map(l => <div key={l.id} style={{ padding:"2px 0",color:"#94a3b8" }}>{l.msg}</div>)}
                 </div>
@@ -1908,6 +1965,50 @@ export default function GeosisteCRM() {
                 })}
               </div>
               <div style={{ textAlign:"center",fontSize:11,color:"#94a3b8" }}>Score moyen: <b style={{ color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{analytics.avgScore}/100</b></div>
+            </div>
+
+            {/* Europe Map */}
+            <div className="C" style={{ marginBottom:16 }}>
+              <h4 style={{ fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:12 }}>🗺️ Carte Europe — Répartition des Prospects</h4>
+              <div style={{ position:"relative",width:"100%",maxWidth:600,margin:"0 auto",aspectRatio:"1.4/1" }}>
+                {/* SVG simplified Europe map with country positions */}
+                <svg viewBox="0 0 700 500" style={{ width:"100%",height:"100%" }}>
+                  {/* Background */}
+                  <rect width="700" height="500" fill="rgba(0,0,0,.2)" rx="12"/>
+                  {/* Country bubbles positioned on approximate map coordinates */}
+                  {[
+                    {code:"PT",x:95,y:330},{code:"ES",x:155,y:320},{code:"FR",x:240,y:270},
+                    {code:"GB",x:215,y:180},{code:"IE",x:165,y:175},{code:"BE",x:280,y:210},
+                    {code:"NL",x:290,y:185},{code:"LU",x:275,y:230},{code:"DE",x:335,y:210},
+                    {code:"CH",x:305,y:275},{code:"IT",x:360,y:320},{code:"AT",x:380,y:255},
+                    {code:"CZ",x:380,y:215},{code:"PL",x:430,y:195},{code:"DK",x:330,y:150},
+                    {code:"SE",x:370,y:100},{code:"HR",x:410,y:290},{code:"GR",x:460,y:350},
+                  ].map(pos => {
+                    const cd = analytics.byCountry.find(c => c.code === pos.code);
+                    const count = cd?.total || 0;
+                    if (count === 0) return (
+                      <g key={pos.code}>
+                        <circle cx={pos.x} cy={pos.y} r={6} fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.08)" strokeWidth={1}/>
+                        <text x={pos.x} y={pos.y+3} textAnchor="middle" fill="rgba(255,255,255,.15)" fontSize="6" fontFamily="'DM Sans'">{pos.code}</text>
+                      </g>
+                    );
+                    const maxCount = Math.max(...analytics.byCountry.map(c=>c.total), 1);
+                    const radius = Math.max(10, Math.min(40, 8 + (count/maxCount) * 35));
+                    const intensity = Math.min(1, count / maxCount);
+                    const color = `rgba(99,102,241,${0.3 + intensity * 0.5})`;
+                    return (
+                      <g key={pos.code}>
+                        <circle cx={pos.x} cy={pos.y} r={radius+4} fill={`rgba(99,102,241,${intensity*0.15})`}/>
+                        <circle cx={pos.x} cy={pos.y} r={radius} fill={color} stroke="rgba(99,102,241,.6)" strokeWidth={1.5}/>
+                        <text x={pos.x} y={pos.y-2} textAnchor="middle" fill="#fff" fontSize={radius>20?"11":"9"} fontWeight="700" fontFamily="'Space Mono'">{count}</text>
+                        <text x={pos.x} y={pos.y+10} textAnchor="middle" fill="rgba(255,255,255,.7)" fontSize="7" fontFamily="'DM Sans'">{cd?.flag} {pos.code}</text>
+                      </g>
+                    );
+                  })}
+                  {/* Legend */}
+                  <text x="20" y="480" fill="rgba(255,255,255,.3)" fontSize="9" fontFamily="'DM Sans'">Taille = nombre de prospects</text>
+                </svg>
+              </div>
             </div>
 
             {/* Funnel */}
