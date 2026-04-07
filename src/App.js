@@ -215,7 +215,10 @@ export default function GeosisteCRM() {
   const agentRef = useRef({ running: false });
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentLog, setAgentLog] = useState([]);
-  const [adminTab, setAdminTab] = useState("team"); // team | activity | prospects
+  const [adminTab, setAdminTab] = useState("team");
+  const [selectedIds, setSelectedIds] = useState(new Set()); // multi-select
+  const [page, setPage] = useState(0); // pagination
+  const PAGE_SIZE = 100;
 
   // ─── INIT ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -400,6 +403,53 @@ export default function GeosisteCRM() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href=url; a.download=`prospects_enrichis_${new Date().toISOString().slice(0,10)}.csv`; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // ─── BACKUP / RESTORE ─────────────────────────────────────────────────────
+  const backupAll = () => {
+    const data = { prospects, activities, quotes, users, exportDate: new Date().toISOString(), version: "v12" };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `geosiste_backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const restoreBackup = (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.prospects) { setProspects(data.prospects); LS.set("crm_prospects", data.prospects); }
+        if (data.activities) { setActivities(data.activities); LS.set("crm_activities", data.activities); }
+        if (data.quotes) { setQuotes(data.quotes); LS.set("crm_quotes", data.quotes); }
+        addActivity("system", "Système", "Restauration", `Backup restauré — ${data.prospects?.length || 0} prospects`);
+      } catch {}
+    };
+    reader.readAsText(file); e.target.value = "";
+  };
+
+  // ─── MULTI-SELECT ACTIONS ─────────────────────────────────────────────────
+  const toggleSelect = (id) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const selectAllPage = () => setSelectedIds(new Set(filtered.slice(page*PAGE_SIZE, (page+1)*PAGE_SIZE).map(p => p.id)));
+  const deselectAll = () => setSelectedIds(new Set());
+
+  const bulkAction = (action, value) => {
+    if (selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    if (action === "delete") {
+      setProspects(prev => prev.filter(p => !selectedIds.has(p.id)));
+      addActivity("system", "Système", "Suppression masse", `${ids.length} prospects supprimés`);
+    } else if (action === "assign") {
+      const u = users.find(x => x.id === value);
+      setProspects(prev => prev.map(p => selectedIds.has(p.id) ? { ...p, assignedTo: value, assignedName: u?.name || "" } : p));
+      addActivity("system", "Système", "Assignation masse", `${ids.length} prospects → ${u?.name}`);
+    } else if (action === "tag") {
+      setProspects(prev => prev.map(p => selectedIds.has(p.id) ? { ...p, tags: [...new Set([...(p.tags||[]), value])] } : p));
+    } else if (action === "stage") {
+      setProspects(prev => prev.map(p => selectedIds.has(p.id) ? { ...p, stage: value, lastUpdate: new Date().toISOString() } : p));
+    }
+    setSelectedIds(new Set());
   };
 
   // ─── AGENT SCAN ───────────────────────────────────────────────────────────
@@ -1094,33 +1144,57 @@ export default function GeosisteCRM() {
                   {agentRunning ? <Dots/> : `🧠 Qualifier (${filtered.filter(p=>!p.qualification).length})`}
                 </button>
                 <button className="B BS" onClick={() => setShowAddModal(true)} style={{ fontSize:9,padding:"5px 10px" }}>➕</button>
-                <button className="B BG" onClick={exportCSV} style={{ fontSize:9,padding:"5px 10px" }}>📥</button>
+                <button className="B BG" onClick={exportCSV} style={{ fontSize:9,padding:"5px 10px" }}>📥 CSV</button>
+                <button className="B BG" onClick={backupAll} style={{ fontSize:9,padding:"5px 10px" }}>💾 Backup</button>
+                <label className="B BG" style={{ fontSize:9,padding:"5px 10px",cursor:"pointer" }}>📂 Restaurer<input type="file" accept=".json" onChange={restoreBackup} style={{display:"none"}}/></label>
               </div>
             </div>
+
+            {/* Multi-select action bar */}
+            {selectedIds.size > 0 && (
+              <div className="C" style={{ marginBottom:8,padding:10,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",border:"1px solid rgba(99,102,241,.2)" }}>
+                <span style={{ fontSize:11,fontWeight:700,color:"#c4b5fd" }}>✓ {selectedIds.size} sélectionné(s)</span>
+                <button className="B BG" style={{ fontSize:9,padding:"4px 8px" }} onClick={deselectAll}>Désélectionner</button>
+                {isAdmin && <select className="S" style={{ fontSize:10,padding:"4px 8px" }} onChange={e => { if(e.target.value) bulkAction("assign",e.target.value); e.target.value=""; }}>
+                  <option value="">Assigner à...</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>}
+                <select className="S" style={{ fontSize:10,padding:"4px 8px" }} onChange={e => { if(e.target.value) bulkAction("stage",e.target.value); e.target.value=""; }}>
+                  <option value="">Pipeline →</option>
+                  {PIPELINE.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+                </select>
+                <select className="S" style={{ fontSize:10,padding:"4px 8px" }} onChange={e => { if(e.target.value) bulkAction("tag",e.target.value); e.target.value=""; }}>
+                  <option value="">Ajouter tag...</option>
+                  {["Priorité Q2","VIP","À rappeler","Salon","Concurrent","Nouveau"].map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button className="B BD" style={{ fontSize:9,padding:"4px 8px",marginLeft:"auto" }} onClick={() => { if(window.confirm(`Supprimer ${selectedIds.size} prospects ?`)) bulkAction("delete"); }}>🗑️ Supprimer</button>
+              </div>
+            )}
 
             {/* Table */}
             <div className="C" style={{ padding:0,overflow:"hidden" }}>
               <table style={{ width:"100%",borderCollapse:"collapse",fontSize:10 }}>
                 <thead><tr style={{ background:"rgba(99,102,241,.05)" }}>
+                  <th style={{ padding:"6px 4px",width:28 }}><input type="checkbox" onChange={e => e.target.checked ? selectAllPage() : deselectAll()} checked={selectedIds.size > 0 && filtered.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).every(p=>selectedIds.has(p.id))}/></th>
                   {["","Nom","Type","Ville","Pays","Score","📊","📧","📞","Stade","Assigné","Complét.","Tags"].map(h => (
                     <th key={h} style={{ padding:"6px 4px",textAlign:"left",color:"#64748b",fontWeight:600,fontSize:9 }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {filtered.slice(0,150).map(p => {
+                  {filtered.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(p => {
                     const compl = getCompleteness(p);
                     return (
-                      <tr key={p.id} style={{ borderBottom:"1px solid rgba(99,102,241,.04)",cursor:"pointer" }}
-                        onClick={() => { setSelected(p); setAiOutput(""); setModalTab("info"); setCommentText(""); }}>
-                        <td style={{ padding:"4px",fontSize:13 }}>{p.flag}</td>
-                        <td style={{ padding:"4px",fontWeight:600,color:"#e2e8f0",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.name}</td>
+                      <tr key={p.id} style={{ borderBottom:"1px solid rgba(255,255,255,.02)",cursor:"pointer",background:selectedIds.has(p.id)?"rgba(99,102,241,.06)":"transparent" }}>
+                        <td style={{ padding:"4px" }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)}/></td>
+                        <td style={{ padding:"4px",fontSize:13 }} onClick={() => { setSelected(p); setAiOutput(""); setModalTab("info"); setCommentText(""); }}>{p.flag}</td>
+                        <td style={{ padding:"4px",fontWeight:600,color:"#e2e8f0",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }} onClick={() => { setSelected(p); setAiOutput(""); setModalTab("info"); setCommentText(""); }}>{p.name}</td>
                         <td style={{ padding:"4px" }}><span className="T" style={{ background:"rgba(99,102,241,.08)",color:"#a5b4fc",fontSize:8 }}>{p.type}</span></td>
                         <td style={{ padding:"4px",color:"#94a3b8",fontSize:9 }}>{p.city}</td>
                         <td style={{ padding:"4px",color:"#94a3b8",fontSize:9 }}>{p.countryName}</td>
                         <td style={{ padding:"4px" }}><ScoreRing score={p.score} size={24}/></td>
                         <td style={{ padding:"4px",color:"#06b6d4",fontSize:9,fontFamily:"'Space Mono'" }}>{p.organicTraffic ? p.organicTraffic.toLocaleString() : "—"}</td>
-                        <td style={{ padding:"4px" }}>{p.email ? <span style={{color:"#10b981"}}>✓</span> : <span style={{color:"#64748b"}}>—</span>}</td>
-                        <td style={{ padding:"4px" }}>{p.phone ? <span style={{color:"#10b981"}}>✓</span> : <span style={{color:"#64748b"}}>—</span>}</td>
+                        <td style={{ padding:"4px" }}>{p.email ? <span style={{color:"#10b981"}}>✓</span> : <span style={{color:"#475569"}}>—</span>}</td>
+                        <td style={{ padding:"4px" }}>{p.phone ? <span style={{color:"#10b981"}}>✓</span> : <span style={{color:"#475569"}}>—</span>}</td>
                         <td style={{ padding:"4px" }}><span className="T" style={{ background:`${PIPELINE.find(s=>s.id===p.stage)?.color}15`,color:PIPELINE.find(s=>s.id===p.stage)?.color,fontSize:8 }}>{PIPELINE.find(s=>s.id===p.stage)?.icon}</span></td>
                         <td style={{ padding:"4px",color:"#94a3b8",fontSize:9 }}>{p.assignedName||"—"}</td>
                         <td style={{ padding:"4px" }}>
@@ -1135,6 +1209,19 @@ export default function GeosisteCRM() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {filtered.length > PAGE_SIZE && (
+              <div style={{ display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12 }}>
+                <button className="B BG" style={{ fontSize:10,padding:"5px 12px" }} disabled={page===0}
+                  onClick={() => setPage(p => Math.max(0, p-1))}>← Précédent</button>
+                <span style={{ fontSize:11,color:"#64748b",fontFamily:"'Space Mono'" }}>
+                  Page {page+1} / {Math.ceil(filtered.length/PAGE_SIZE)} — {filtered.length} résultats
+                </span>
+                <button className="B BG" style={{ fontSize:10,padding:"5px 12px" }} disabled={(page+1)*PAGE_SIZE >= filtered.length}
+                  onClick={() => setPage(p => p+1)}>Suivant →</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1818,19 +1905,50 @@ export default function GeosisteCRM() {
                 ))}
               </div>
 
-              {/* Tab: Info */}
+              {/* Tab: Info — Inline Editable */}
               {modalTab === "info" && (
                 <div>
-                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14 }}>
-                    {[{l:"Téléphone",v:selected.phone},{l:"Email",v:selected.email},{l:"Site web",v:selected.website},{l:"Instagram",v:selected.instagram},{l:"Google Maps",v:selected.googleMapsUrl?"Voir ↗":""},{l:"Notes",v:selected.notes},
-                      {l:"Contact",v:selected.contactName},{l:"Poste",v:selected.contactPosition},{l:"Confiance Email",v:selected.emailConfidence?selected.emailConfidence+"%":""}]
-                      .filter(f=>f.v).map(f => (
-                      <div key={f.l} style={{ background:"rgba(99,102,241,.04)",borderRadius:8,padding:8 }}>
-                        <div style={{ fontSize:9,color:"#475569" }}>{f.l}</div>
-                        <div style={{ fontSize:12,color:"#d1d5db" }}>{f.v}</div>
+                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14 }}>
+                    {[{k:"phone",l:"📞 Téléphone"},{k:"email",l:"📧 Email"},{k:"website",l:"🌐 Site web"},{k:"instagram",l:"📸 Instagram"},{k:"type",l:"🏪 Type",select:true},{k:"city",l:"📍 Ville"},{k:"notes",l:"📝 Notes",wide:true}]
+                      .map(f => (
+                      <div key={f.k} style={{ background:"rgba(255,255,255,.02)",borderRadius:10,padding:8,gridColumn:f.wide?"1/-1":"auto" }}>
+                        <div style={{ fontSize:9,color:"#64748b",marginBottom:3 }}>{f.l}</div>
+                        {f.select ? (
+                          <select className="S" style={{ width:"100%",padding:"5px 8px",fontSize:11 }} value={selected[f.k]||""} onChange={e => {
+                            const v = e.target.value;
+                            setProspects(prev => prev.map(p => p.id===selected.id ? {...p,[f.k]:v,lastUpdate:new Date().toISOString()} : p));
+                            setSelected(prev => prev ? {...prev,[f.k]:v} : null);
+                          }}>
+                            {PROSPECT_TYPES.map(t => <option key={t}>{t}</option>)}
+                          </select>
+                        ) : (
+                          <input className="I" style={{ padding:"5px 8px",fontSize:11,background:"transparent",border:"1px solid rgba(255,255,255,.04)" }}
+                            value={selected[f.k]||""} placeholder={`Ajouter ${f.l.slice(2).toLowerCase()}...`}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setSelected(prev => prev ? {...prev,[f.k]:v} : null);
+                            }}
+                            onBlur={e => {
+                              const v = e.target.value;
+                              setProspects(prev => prev.map(p => p.id===selected.id ? {...p,[f.k]:v,lastUpdate:new Date().toISOString()} : p));
+                              if (v !== (prospects.find(p=>p.id===selected.id)?.[f.k]||"")) {
+                                addActivity(selected.id, selected.name, "Modifié", `${f.l.slice(2)}: ${v}`);
+                              }
+                            }}/>
+                        )}
                       </div>
                     ))}
                   </div>
+                  {/* Read-only enriched data */}
+                  {(selected.contactName || selected.emailConfidence) && (
+                    <div style={{ display:"flex",gap:8,marginBottom:10,flexWrap:"wrap" }}>
+                      {selected.contactName && <span className="T" style={{ background:"rgba(16,185,129,.1)",color:"#34d399" }}>👤 {selected.contactName}</span>}
+                      {selected.contactPosition && <span className="T" style={{ background:"rgba(99,102,241,.1)",color:"#a5b4fc" }}>{selected.contactPosition}</span>}
+                      {selected.emailConfidence && <span className="T" style={{ background:"rgba(245,158,11,.1)",color:"#fbbf24" }}>Email: {selected.emailConfidence}% confiance</span>}
+                      {selected.source && <span className="T" style={{ background:"rgba(255,255,255,.04)",color:"#64748b" }}>Source: {selected.source}</span>}
+                      <span className="T" style={{ background:"rgba(255,255,255,.04)",color:"#64748b" }}>Complétude: {getCompleteness(selected)}%</span>
+                    </div>
+                  )}
                   {/* Pappers / Company Data */}
                   {(selected.siret || selected.dirigeant || selected.chiffreAffaires) && (
                     <div style={{ background:"rgba(139,92,246,.06)",borderRadius:10,padding:12,marginBottom:14,border:"1px solid rgba(139,92,246,.1)" }}>
