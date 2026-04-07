@@ -1,26 +1,53 @@
+// Vercel Serverless Function — Proxy vers Anthropic API
+// La clé API reste côté serveur, jamais exposée au client
+
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
 
   try {
+    const { model, max_tokens, system, messages } = req.body;
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01'
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify({
+        model: model || 'claude-sonnet-4-20250514',
+        max_tokens: max_tokens || 1000,
+        system: system || '',
+        messages: messages || [],
+      }),
     });
+
     const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
     return res.status(200).json(data);
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
+  } catch (error) {
+    console.error('Proxy error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
