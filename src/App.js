@@ -642,6 +642,30 @@ export default function GeosisteCRM() {
                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>}
               <span style={{ marginLeft:"auto",fontSize:11,color:"#64748b",fontFamily:"'JetBrains Mono'" }}>{filtered.length}</span>
+              <button className="B BP" disabled={agentRunning} onClick={async () => {
+                setAgentRunning(true); setAgentLog([]);
+                const toQ = filtered.filter(p => !p.qualification).slice(0, 50);
+                let done = 0;
+                for (const p of toQ) {
+                  if (!agentRef.current || agentRef.current.running === false) break;
+                  done++;
+                  setAgentLog(prev => [{ id: Date.now(), msg: `🧠 ${done}/${toQ.length} — ${p.name}` }, ...prev].slice(0,50));
+                  const q = await ai(
+                    `${AI_SYS}\n\nQualifie ce prospect. JSON uniquement:\n{"score":1-100,"priority":"hot|warm|cold","estimated_monthly_volume":"...","lifetime_value":"...","best_channel":"email|whatsapp|phone","approach_strategy":"...","recommended_products":[{"name":"...","reason":"..."}],"talking_points":["..."],"objection_risks":["..."],"red_flags":["..."]}`,
+                    `Qualifie: ${p.name} (${p.type}) à ${p.city}, ${p.countryName}. ${p.notes||""} ${p.rating?"Note:"+p.rating:""} ${p.reviewCount?"("+p.reviewCount+" avis)":""}`,
+                    true
+                  );
+                  if (q) {
+                    setProspects(prev => prev.map(x => x.id === p.id ? { ...x, qualification: q, score: q.score } : x));
+                    addActivity(p.id, p.name, "Qualification IA", `Score: ${q.score} — ${q.priority}`);
+                  }
+                  await new Promise(r => setTimeout(r, 50));
+                }
+                setAgentLog(prev => [{ id: Date.now(), msg: `🏁 ${done} prospects qualifiés !` }, ...prev]);
+                setAgentRunning(false);
+              }} style={{ fontSize:10,padding:"6px 12px" }}>
+                {agentRunning ? <Dots/> : `🧠 Qualifier tout (${filtered.filter(p=>!p.qualification).length})`}
+              </button>
               <button className="B BS" onClick={() => setShowAddModal(true)} style={{ fontSize:10,padding:"6px 12px" }}>➕</button>
               <button className="B BG" onClick={exportCSV} style={{ fontSize:10,padding:"6px 12px" }}>📥</button>
             </div>
