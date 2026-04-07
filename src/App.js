@@ -86,6 +86,52 @@ const LS = {
   del: (k) => { try { localStorage.removeItem(k); } catch {} },
 };
 
+// ─── SUPABASE MINI CLIENT ───────────────────────────────────────────────────
+const SUPA_URL = "https://doompuvsmjmfqnbwclwf.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRvb21wdXZzbWptZnFuYndjbHdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzNTA3MTUsImV4cCI6MjA5MDkyNjcxNX0.u4oSacxmDUKnYM5-IVIJrpIy-iQsQfpxADkBIPk9SLM";
+const SUPA_HEADERS = { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=minimal" };
+
+const supa = {
+  // Fetch all rows from a table
+  async getAll(table) {
+    try {
+      const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=created_at.desc&limit=10000`, { headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}` } });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch { return null; }
+  },
+  // Upsert (insert or update) a single row
+  async upsert(table, row) {
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/${table}`, { method: "POST", headers: { ...SUPA_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) });
+    } catch {}
+  },
+  // Upsert many rows (batch)
+  async upsertMany(table, rows) {
+    if (!rows?.length) return;
+    // Batch in chunks of 100
+    for (let i = 0; i < rows.length; i += 100) {
+      const chunk = rows.slice(i, i + 100);
+      try {
+        await fetch(`${SUPA_URL}/rest/v1/${table}`, { method: "POST", headers: { ...SUPA_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(chunk) });
+      } catch {}
+    }
+  },
+  // Delete a row
+  async del(table, id) {
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method: "DELETE", headers: SUPA_HEADERS });
+    } catch {}
+  },
+  // Check connection
+  async ping() {
+    try {
+      const r = await fetch(`${SUPA_URL}/rest/v1/crm_users?select=id&limit=1`, { headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}` } });
+      return r.ok;
+    } catch { return false; }
+  },
+};
+
 // ─── AI ENGINE ──────────────────────────────────────────────────────────────
 async function ai(sys, usr, json = false) {
   try {
@@ -216,40 +262,88 @@ export default function GeosisteCRM() {
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentLog, setAgentLog] = useState([]);
   const [adminTab, setAdminTab] = useState("team");
-  const [selectedIds, setSelectedIds] = useState(new Set()); // multi-select
-  const [page, setPage] = useState(0); // pagination
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [page, setPage] = useState(0);
   const PAGE_SIZE = 100;
+  const [supaOk, setSupaOk] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const saveTimer = useRef(null);
 
-  // ─── INIT ─────────────────────────────────────────────────────────────────
+  // ─── INIT: Load from Supabase first, fallback to localStorage ─────────
   useEffect(() => {
     const u = LS.get("crm_user");
     if (u) setUser(u);
-    setUsers(LS.get("crm_users") || [
-      { id: "admin1", name: "Carl", email: "admin@chanvrier.com", password: "admin", role: "admin", createdAt: new Date().toISOString() }
-    ]);
-    setProspects(LS.get("crm_prospects") || []);
-    setActivities(LS.get("crm_activities") || []);
-    setQuotes(LS.get("crm_quotes") || []);
+    
+    // Load data — try Supabase first
+    (async () => {
+      const ok = await supa.ping();
+      setSupaOk(ok);
+      
+      if (ok) {
+        // Load from Supabase
+        const [supaUsers, supaProspects, supaActivities, supaQuotes] = await Promise.all([
+          supa.getAll("crm_users"), supa.getAll("crm_prospects"),
+          supa.getAll("crm_activities"), supa.getAll("crm_quotes"),
+        ]);
+        if (supaUsers?.length > 0) setUsers(supaUsers);
+        else setUsers(LS.get("crm_users") || [{ id:"admin1",name:"Carl",email:"admin@chanvrier.com",password:"admin",role:"admin",createdAt:new Date().toISOString() }]);
+        
+        if (supaProspects?.length > 0) {
+          setProspects(supaProspects.map(r => r.data ? { ...r.data, _supaId: r.id } : r));
+        } else {
+          setProspects(LS.get("crm_prospects") || []);
+        }
+        if (supaActivities?.length > 0) setActivities(supaActivities.map(r => r.data || r));
+        else setActivities(LS.get("crm_activities") || []);
+        if (supaQuotes?.length > 0) setQuotes(supaQuotes.map(r => r.data || r));
+        else setQuotes(LS.get("crm_quotes") || []);
+      } else {
+        // Fallback to localStorage
+        setUsers(LS.get("crm_users") || [{ id:"admin1",name:"Carl",email:"admin@chanvrier.com",password:"admin",role:"admin",createdAt:new Date().toISOString() }]);
+        setProspects(LS.get("crm_prospects") || []);
+        setActivities(LS.get("crm_activities") || []);
+        setQuotes(LS.get("crm_quotes") || []);
+      }
+    })();
+
     // Gmail
     const gt = localStorage.getItem('gmail_refresh_token');
-    if (gt) {
-      gmailAction('profile').then(p => { if (p.emailAddress) { setGmailOk(true); setGmailEmail(p.emailAddress); } });
-    }
-    // OAuth callback
+    if (gt) { gmailAction('profile').then(p => { if (p.emailAddress) { setGmailOk(true); setGmailEmail(p.emailAddress); } }); }
     const code = new URLSearchParams(window.location.search).get('code');
     if (code) {
       gmailAction('exchange_token', { code }).then(d => {
-        if (d.refreshToken) {
-          localStorage.setItem('gmail_refresh_token', d.refreshToken);
-          setGmailOk(true);
-          window.history.replaceState({}, '', window.location.pathname);
-        }
+        if (d.refreshToken) { localStorage.setItem('gmail_refresh_token', d.refreshToken); setGmailOk(true); window.history.replaceState({}, '', window.location.pathname); }
       });
     }
   }, []);
 
-  // Save on change
-  useEffect(() => { if (user) { LS.set("crm_prospects", prospects); } }, [prospects]);
+  // ─── SAVE: localStorage always + debounced Supabase sync ──────────────
+  const syncToSupabase = useCallback(async (prosp, acts, qts) => {
+    if (!supaOk) return;
+    // Sync prospects
+    if (prosp?.length > 0) {
+      const rows = prosp.map(p => ({ id: p.id, data: p, created_at: p.addedAt || new Date().toISOString(), updated_at: p.lastUpdate || new Date().toISOString() }));
+      await supa.upsertMany("crm_prospects", rows);
+    }
+    // Sync activities (last 200)
+    if (acts?.length > 0) {
+      const rows = acts.slice(0, 200).map(a => ({ id: a.id, data: a, created_at: a.date || new Date().toISOString() }));
+      await supa.upsertMany("crm_activities", rows);
+    }
+    // Sync quotes
+    if (qts?.length > 0) {
+      const rows = qts.map(q => ({ id: q.id, data: q, created_at: q.date || new Date().toISOString() }));
+      await supa.upsertMany("crm_quotes", rows);
+    }
+  }, [supaOk]);
+
+  useEffect(() => {
+    if (!user) return;
+    LS.set("crm_prospects", prospects);
+    // Debounced Supabase sync (5 seconds after last change)
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { syncToSupabase(prospects, activities, quotes); }, 5000);
+  }, [prospects]);
   useEffect(() => { if (user) { LS.set("crm_activities", activities); } }, [activities]);
   useEffect(() => { if (user) { LS.set("crm_quotes", quotes); } }, [quotes]);
   useEffect(() => { LS.set("crm_users", users); }, [users]);
@@ -1071,6 +1165,38 @@ export default function GeosisteCRM() {
                 <label className="B BG" style={{ width:"100%",justifyContent:"center",cursor:"pointer",boxSizing:"border-box" }}>
                   📂 Importer CSV/JSON<input type="file" accept=".csv,.json" onChange={importFile} style={{ display:"none" }}/>
                 </label>
+                <button className="B BG" onClick={backupAll} style={{ width:"100%",justifyContent:"center" }}>💾 Backup JSON</button>
+                {/* Supabase Status */}
+                <div style={{ background:supaOk?"rgba(16,185,129,.06)":"rgba(239,68,68,.06)", borderRadius:10, padding:10, border:`1px solid ${supaOk?"rgba(16,185,129,.15)":"rgba(239,68,68,.15)"}` }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:4 }}>
+                    <span style={{ width:8,height:8,borderRadius:"50%",background:supaOk?"#10b981":"#ef4444" }}/>
+                    <span style={{ fontSize:11,fontWeight:600,color:supaOk?"#10b981":"#ef4444" }}>Supabase {supaOk?"Connecté":"Déconnecté"}</span>
+                  </div>
+                  {supaOk && !migrating && (
+                    <button className="B BS" style={{ width:"100%",justifyContent:"center",fontSize:10,padding:"6px" }}
+                      onClick={async () => {
+                        setMigrating(true);
+                        try {
+                          // Sync users
+                          for (const u of users) { await supa.upsert("crm_users", u); }
+                          // Sync all prospects
+                          const rows = prospects.map(p => ({ id: p.id, data: p, created_at: p.addedAt || new Date().toISOString(), updated_at: p.lastUpdate || new Date().toISOString() }));
+                          await supa.upsertMany("crm_prospects", rows);
+                          // Sync activities
+                          const actRows = activities.slice(0,500).map(a => ({ id: a.id, data: a, created_at: a.date || new Date().toISOString() }));
+                          await supa.upsertMany("crm_activities", actRows);
+                          // Sync quotes
+                          const qRows = quotes.map(q => ({ id: q.id, data: q, created_at: q.date || new Date().toISOString() }));
+                          await supa.upsertMany("crm_quotes", qRows);
+                          alert(`✅ Migration terminée !\n${prospects.length} prospects\n${activities.length} activités\n${quotes.length} devis`);
+                        } catch (e) { alert("Erreur: " + e.message); }
+                        setMigrating(false);
+                      }}>
+                      {migrating ? <Dots/> : `☁️ Migrer ${prospects.length} prospects vers Supabase`}
+                    </button>
+                  )}
+                  {!supaOk && <div style={{ fontSize:9,color:"#64748b" }}>Les données sont sauvegardées en local uniquement</div>}
+                </div>
               </div>
             </div>
 
