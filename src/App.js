@@ -234,12 +234,126 @@ RÈGLES:
 - Personnalise chaque message selon le type de prospect
 - Ne mens jamais, ne surpromets pas`;
 
-async function searchProspects(country, city) {
+// ─── GOOGLE PLACES API — REAL PROSPECT SEARCH ──────────────────────────────
+const SEARCH_QUERIES_BY_LANG = {
+  fr: ["boutique CBD", "CBD shop", "magasin CBD", "tabac CBD", "vape shop CBD", "herboristerie CBD"],
+  de: ["CBD Shop", "CBD Laden", "Hanfladen", "CBD Store"],
+  es: ["tienda CBD", "CBD shop", "herbolario CBD"],
+  it: ["negozio CBD", "CBD shop", "canapa shop"],
+  en: ["CBD shop", "CBD store", "hemp shop", "vape shop CBD"],
+  pt: ["loja CBD", "CBD shop"],
+  nl: ["CBD winkel", "CBD shop", "hennep winkel"],
+  pl: ["sklep CBD", "CBD shop"],
+};
+
+async function searchProspectsReal(country, city) {
+  const countryData = COUNTRIES.find(c => c.name === country || c.code === country);
+  const lang = countryData?.lang || "en";
+  const queries = SEARCH_QUERIES_BY_LANG[lang] || SEARCH_QUERIES_BY_LANG.en;
+  const location = city ? `${city}, ${countryData?.name || country}` : (countryData?.name || country);
+  
+  let allResults = [];
+  
+  // Try Google Places API first
+  for (const q of queries.slice(0, 2)) {
+    try {
+      const res = await fetch('/api/places', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: `${q} ${location}`, radius: 50000 }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.results?.length > 0) {
+          allResults.push(...data.results);
+        }
+      }
+    } catch (e) {
+      console.error('Places API error:', e);
+    }
+  }
+
+  // Dedupe by name
+  const seen = new Set();
+  allResults = allResults.filter(r => {
+    const key = r.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  if (allResults.length > 0) {
+    // Convert Google Places format to prospect format
+    return allResults.map(r => {
+      // Detect type from Google types
+      const types = (r.types || []).join(' ').toLowerCase();
+      let prospectType = "CBD Shop";
+      if (types.includes('pharmacy') || types.includes('health')) prospectType = "Parapharmacie";
+      else if (types.includes('store') && types.includes('tobacco')) prospectType = "Tabac/Vape Shop";
+      else if (types.includes('bar') || types.includes('cafe')) prospectType = "Head Shop";
+      
+      // Extract city from address
+      const addressParts = (r.address || '').split(',').map(s => s.trim());
+      const extractedCity = city || addressParts[1] || addressParts[0] || '';
+
+      return {
+        name: r.name,
+        type: prospectType,
+        city: extractedCity,
+        phone: r.phone || '',
+        email: '',
+        website: r.website || '',
+        instagram: '',
+        googleMapsUrl: r.googleMapsUrl || '',
+        rating: r.rating || 0,
+        reviewCount: r.reviewCount || 0,
+        score: Math.min(95, Math.round((r.rating || 3) * 15 + (r.reviewCount || 0) * 0.5)),
+        notes: `${r.rating ? '⭐ ' + r.rating + '/5' : ''} ${r.reviewCount ? '(' + r.reviewCount + ' avis)' : ''} ${r.isOpen ? '✅ Ouvert' : ''}`.trim(),
+        placeId: r.placeId,
+        lat: r.lat,
+        lng: r.lng,
+        source: 'google_places',
+      };
+    });
+  }
+
+  // Fallback to AI search if Places API unavailable
+  return await searchProspectsAI(country, city);
+}
+
+async function searchProspectsAI(country, city) {
   return await ai(
-    `${AI_SYSTEM}\n\nTu dois trouver des prospects CBD. Réponds UNIQUEMENT en JSON valide sans backticks.\nFormat: [{"name":"...","type":"...","city":"...","phone":"...","email":"...","website":"...","instagram":"...","linkedin":"...","score":1-100,"size":"small|medium|large","estimated_revenue":"...","notes":"...","specialties":["..."]}]\nGénère 8-15 prospects réalistes avec des noms crédibles pour le pays.`,
-    `Prospects CBD dans ${city ? city + ", " : ""}${country}. Types: CBD shops, tabacs, e-shops, grossistes, franchises, parapharmacies, herboristeries. Noms et détails réalistes.`,
+    `${AI_SYSTEM}\n\nTu dois trouver des prospects CBD. Réponds UNIQUEMENT en JSON valide, RIEN D'AUTRE — pas de texte avant, pas de backticks, pas de commentaires.\nFormat EXACT: [{"name":"NOM","type":"TYPE","city":"VILLE","phone":"TEL","email":"EMAIL","website":"URL","instagram":"@HANDLE","score":NOMBRE,"notes":"NOTES"}]\nGénère 8-12 prospects avec des noms RÉALISTES pour ce pays.`,
+    `Trouve des boutiques/shops CBD dans ${city ? city + ", " : ""}${country}. Types: CBD shops, tabacs, e-shops, grossistes, franchises, parapharmacies.`,
     true
   ) || [];
+}
+
+// ─── GMAIL API HELPERS ──────────────────────────────────────────────────────
+async function gmailAction(action, params = {}) {
+  try {
+    const refreshToken = localStorage.getItem('gmail_refresh_token');
+    const res = await fetch('/api/gmail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, refreshToken, ...params }),
+    });
+    return await res.json();
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+async function sendRealEmail(to, subject, htmlBody) {
+  return await gmailAction('send', { to, subject, htmlBody });
+}
+
+async function checkReplies(query) {
+  return await gmailAction('list', { query, maxResults: 20 });
+}
+
+async function getGmailProfile() {
+  return await gmailAction('profile');
 }
 
 async function qualifyProspect(prospect) {
@@ -355,6 +469,10 @@ export default function UltraAgent() {
   const [sequences, setSequences] = useState({});
   const [ready, setReady] = useState(false);
   const [bulkSelect, setBulkSelect] = useState(new Set());
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailStatus, setEmailStatus] = useState("");
 
   // Init
   useEffect(() => {
@@ -364,6 +482,30 @@ export default function UltraAgent() {
       if (l) setLogs(l);
       if (c) setCompetitors(c);
       if (s) setSequences(s);
+      // Check Gmail connection
+      const gmailToken = localStorage.getItem('gmail_refresh_token');
+      if (gmailToken) {
+        try {
+          const profile = await getGmailProfile();
+          if (profile.emailAddress) {
+            setGmailConnected(true);
+            setGmailEmail(profile.emailAddress);
+          }
+        } catch {}
+      }
+      // Handle OAuth callback
+      const urlParams = new URLSearchParams(window.location.search);
+      const authCode = urlParams.get('code');
+      if (authCode) {
+        const tokenData = await gmailAction('exchange_token', { code: authCode });
+        if (tokenData.refreshToken) {
+          localStorage.setItem('gmail_refresh_token', tokenData.refreshToken);
+          setGmailConnected(true);
+          window.history.replaceState({}, '', window.location.pathname);
+          const profile = await getGmailProfile();
+          if (profile.emailAddress) setGmailEmail(profile.emailAddress);
+        }
+      }
       setReady(true);
     })();
   }, []);
@@ -415,7 +557,7 @@ export default function UltraAgent() {
     setLoading("search");
     const c = COUNTRIES.find(x => x.code === searchForm.country);
     log("🔍", `Recherche: ${searchForm.city ? searchForm.city + ", " : ""}${c.name}`);
-    const results = await searchProspects(c.name, searchForm.city);
+    const results = await searchProspectsReal(c.name, searchForm.city);
     if (Array.isArray(results)) {
       const news = results.map(r => ({
         ...r, id: `p${Date.now()}${Math.random().toString(36).slice(2,6)}`,
@@ -499,123 +641,124 @@ export default function UltraAgent() {
     setLoading("");
   };
 
-  // ─── AUTONOMOUS AGENT ────────────────────────────────────────────────────
-  const runAgent = async () => {
+  // ─── AUTONOMOUS AGENT (STEP BY STEP) ───────────────────────────────────
+  const runAgentStep = async (stepId, options = {}) => {
     agentRef.current.running = true;
     setAgentRunning(true);
-    setAgentLog([]);
-    log("🤖", "Agent autonome démarré — Mode Full Auto");
+    const countries = options.countries || COUNTRIES.slice(0, 8);
+    const citiesPerCountry = options.citiesPerCountry || 3;
 
-    const targetCountries = COUNTRIES.slice(0, 8);
-    for (const country of targetCountries) {
-      if (!agentRef.current.running) break;
-
-      // Phase 1: Discovery
-      log("🌍", `Phase 1 — Scan ${country.flag} ${country.name}`);
-      const topCities = country.cities.slice(0, 3);
-      for (const city of topCities) {
+    if (stepId === "scan" || stepId === "all") {
+      log("🌍", "ÉTAPE 1 — Scan des marchés européens");
+      for (const country of countries) {
         if (!agentRef.current.running) break;
-        log("🔍", `Scan: ${city}, ${country.name}`);
-        const results = await searchProspects(country.name, city);
-        if (Array.isArray(results) && results.length > 0) {
-          const news = results.map(r => ({
-            ...r, id: `p${Date.now()}${Math.random().toString(36).slice(2,6)}`,
-            stage: "discovered", country: country.code, countryName: country.name, flag: country.flag,
-            addedAt: new Date().toISOString(), interactions: [], score: r.score || 50,
-          }));
-          // Dedupe
-          setProspects(prev => {
-            const existing = new Set(prev.map(p => p.name.toLowerCase()));
-            const unique = news.filter(n => !existing.has(n.name.toLowerCase()));
-            return [...prev, ...unique];
-          });
-          log("✅", `+${results.length} prospects à ${city}`);
+        const topCities = country.cities.slice(0, citiesPerCountry);
+        for (const city of topCities) {
+          if (!agentRef.current.running) break;
+          log("🔍", `Scan: ${city}, ${country.name}`);
+          const results = await searchProspectsReal(country.name, city);
+          if (Array.isArray(results) && results.length > 0) {
+            const news = results.map(r => ({
+              ...r, id: `p${Date.now()}${Math.random().toString(36).slice(2,6)}`,
+              stage: "discovered", country: country.code, countryName: country.name, flag: country.flag,
+              addedAt: new Date().toISOString(), interactions: [], score: r.score || 50,
+            }));
+            setProspects(prev => {
+              const existing = new Set(prev.map(p => p.name.toLowerCase()));
+              return [...prev, ...news.filter(n => !existing.has(n.name.toLowerCase()))];
+            });
+            log("✅", `+${results.length} prospects à ${city}`);
+            await new Promise(r => setTimeout(r, 50));
+          }
         }
       }
+      log("🏁", "Scan terminé !");
+    }
 
-      // Phase 2: Qualification (top prospects)
-      if (!agentRef.current.running) break;
-      log("🧠", `Phase 2 — Qualification ${country.flag}`);
-      // Read current state via ref-like pattern, then qualify sequentially
-      const toQualifyPromise = new Promise((resolve) => {
-        setProspects(current => {
-          const toQualify = current.filter(p => p.country === country.code && !p.qualification).slice(0, 5);
-          resolve(toQualify);
-          return current; // no mutation
-        });
+    if (stepId === "qualify" || stepId === "all") {
+      log("🧠", "ÉTAPE 2 — Qualification IA des prospects");
+      const toQualifyP = new Promise(resolve => {
+        setProspects(cur => { resolve(cur.filter(p => !p.qualification && p.stage === "discovered").slice(0, options.maxQualify || 20)); return cur; });
       });
-      const toQualify = await toQualifyPromise;
+      const toQualify = await toQualifyP;
+      let done = 0;
       for (const p of toQualify) {
         if (!agentRef.current.running) break;
+        done++;
+        log("🧠", `Qualification ${done}/${toQualify.length}: ${p.name}`);
         const q = await qualifyProspect(p);
         if (q) {
           setProspects(prev => prev.map(x => x.id === p.id ? { ...x, qualification: q, score: q.score, stage: "qualified" } : x));
           log("📊", `${p.name}: ${q.priority} (${q.score}/100)`);
+          await new Promise(r => setTimeout(r, 50));
         }
       }
-
-      // Phase 3: Outreach (hot/warm leads)
-      if (!agentRef.current.running) break;
-      log("📧", `Phase 3 — Prospection ${country.flag}`);
-      const toContactPromise = new Promise((resolve) => {
-        setProspects(current => {
-          const toContact = current.filter(p =>
-            p.country === country.code &&
-            p.qualification?.priority !== "cold" &&
-            p.stage === "qualified" &&
-            (p.score || 0) >= 50
-          ).slice(0, 3);
-          resolve(toContact);
-          return current;
-        });
-      });
-      const toContact = await toContactPromise;
-      for (const p of toContact) {
-        if (!agentRef.current.running) break;
-        const bestChannel = p.qualification?.best_channel || "email";
-        const msg = await generateMessage(p, bestChannel, "intro", "");
-        setProspects(prev => prev.map(x => x.id === p.id ? {
-          ...x, stage: "contacted", lastContact: new Date().toISOString(),
-          interactions: [...(x.interactions || []), { type: bestChannel, stage: "intro", date: new Date().toISOString(), content: msg }],
-        } : x));
-        log("✉️", `→ ${p.name} via ${bestChannel}`);
-      }
+      log("🏁", `Qualification terminée ! ${done} prospects qualifiés`);
     }
 
-    // Phase 4: Follow-ups
-    if (agentRef.current.running) {
-      log("🔄", "Phase 4 — Relances automatiques");
-      const followupPromise = new Promise((resolve) => {
-        setProspects(current => {
-          const needFollowup = current.filter(p => {
-            if (p.stage !== "contacted") return false;
-            const lastContact = p.lastContact ? new Date(p.lastContact) : null;
-            if (!lastContact) return true;
-            const daysSince = (Date.now() - lastContact.getTime()) / (1000*60*60*24);
-            return daysSince >= 3;
-          }).slice(0, 5);
-          resolve(needFollowup);
-          return current;
+    if (stepId === "outreach" || stepId === "all") {
+      log("📧", "ÉTAPE 3 — Prospection multi-canal");
+      const toContactP = new Promise(resolve => {
+        setProspects(cur => {
+          resolve(cur.filter(p => p.qualification?.priority !== "cold" && (p.stage === "qualified" || p.stage === "discovered") && (p.score || 0) >= 40).slice(0, options.maxOutreach || 10));
+          return cur;
         });
       });
-      const needFollowup = await followupPromise;
-      for (const p of needFollowup) {
+      const toContact = await toContactP;
+      let done = 0;
+      for (const p of toContact) {
         if (!agentRef.current.running) break;
+        done++;
+        const ch = p.qualification?.best_channel || "email";
+        log("📧", `Outreach ${done}/${toContact.length}: ${p.name} via ${ch}`);
+        const msg = await generateMessage(p, ch, "intro", "");
+        setProspects(prev => prev.map(x => x.id === p.id ? {
+          ...x, stage: "contacted", lastContact: new Date().toISOString(),
+          interactions: [...(x.interactions || []), { type: ch, stage: "intro", date: new Date().toISOString(), content: msg }],
+        } : x));
+        log("✉️", `→ ${p.name} via ${ch}`);
+        await new Promise(r => setTimeout(r, 50));
+      }
+      log("🏁", `Outreach terminé ! ${done} prospects contactés`);
+    }
+
+    if (stepId === "followup" || stepId === "all") {
+      log("🔄", "ÉTAPE 4 — Relances automatiques");
+      const followP = new Promise(resolve => {
+        setProspects(cur => {
+          resolve(cur.filter(p => {
+            if (p.stage !== "contacted") return false;
+            const lc = p.lastContact ? new Date(p.lastContact) : null;
+            if (!lc) return true;
+            return (Date.now() - lc.getTime()) / (1000*60*60*24) >= 3;
+          }).slice(0, options.maxFollowup || 10));
+          return cur;
+        });
+      });
+      const toFollow = await followP;
+      let done = 0;
+      for (const p of toFollow) {
+        if (!agentRef.current.running) break;
+        done++;
+        log("🔄", `Relance ${done}/${toFollow.length}: ${p.name}`);
         const msg = await generateMessage(p, "email", "followup", "Relance après premier contact sans réponse.");
         setProspects(prev => prev.map(x => x.id === p.id ? {
           ...x, interactions: [...(x.interactions || []), { type: "email", stage: "followup", date: new Date().toISOString(), content: msg }],
           lastContact: new Date().toISOString(),
         } : x));
-        log("🔄", `Relance: ${p.name}`);
+        log("✉️", `Relance envoyée: ${p.name}`);
+        await new Promise(r => setTimeout(r, 50));
       }
+      log("🏁", `Relances terminées ! ${done} relances`);
     }
 
-    log("🏁", "Cycle agent terminé !");
     agentRef.current.running = false;
     setAgentRunning(false);
+    log("🏁", `Agent terminé — Étape: ${stepId}`);
   };
 
   const stopAgent = () => { agentRef.current.running = false; setAgentRunning(false); log("⏹️", "Agent arrêté"); };
+  const runFullAgent = () => { setAgentLog([]); runAgentStep("all"); };
 
   // ─── BULK ACTIONS ─────────────────────────────────────────────────────────
   const bulkQualify = async () => {
@@ -639,6 +782,62 @@ export default function UltraAgent() {
     setBulkSelect(new Set());
   };
 
+  // ─── GMAIL CONNECT & SEND ───────────────────────────────────────────────
+  const connectGmail = async () => {
+    const data = await gmailAction('auth_url');
+    if (data.authUrl) window.location.href = data.authUrl;
+  };
+
+  const disconnectGmail = () => {
+    localStorage.removeItem('gmail_refresh_token');
+    setGmailConnected(false);
+    setGmailEmail("");
+    log("📧", "Gmail déconnecté");
+  };
+
+  const sendEmailReal = async (prospect, subject, body) => {
+    if (!prospect.email) {
+      setEmailStatus("❌ Pas d'email pour ce prospect");
+      return false;
+    }
+    if (!gmailConnected) {
+      setEmailStatus("❌ Gmail non connecté");
+      return false;
+    }
+    setSendingEmail(true);
+    setEmailStatus("📧 Envoi en cours...");
+    const htmlBody = body.replace(/\n/g, '<br/>');
+    const result = await sendRealEmail(prospect.email, subject, htmlBody);
+    setSendingEmail(false);
+    if (result.success) {
+      setEmailStatus(`✅ Email envoyé à ${prospect.email}`);
+      log("📧", `Email ENVOYÉ à ${prospect.name} (${prospect.email})`);
+      updateProspect(prospect.id, {
+        interactions: [...(prospect.interactions || []), { type: "email_sent", date: new Date().toISOString(), content: body, subject, messageId: result.messageId, threadId: result.threadId }],
+        lastContact: new Date().toISOString(),
+        stage: prospect.stage === "discovered" || prospect.stage === "qualified" ? "contacted" : prospect.stage,
+      });
+      return true;
+    } else {
+      setEmailStatus(`❌ Erreur: ${result.error || 'Échec envoi'}`);
+      return false;
+    }
+  };
+
+  const checkProspectReplies = async () => {
+    if (!gmailConnected) return;
+    log("📧", "Vérification des réponses Gmail...");
+    const contacted = prospects.filter(p => p.email && p.stage === "contacted");
+    for (const p of contacted.slice(0, 20)) {
+      const replies = await checkReplies(`from:${p.email} is:inbox`);
+      if (replies.messages?.length > 0) {
+        updateProspect(p.id, { stage: "responded" });
+        log("💬", `Réponse reçue de ${p.name} !`);
+      }
+    }
+    log("✅", "Vérification terminée");
+  };
+
   // ─── EXPORT ───────────────────────────────────────────────────────────────
   const exportCSV = () => {
     const headers = ["Nom","Type","Ville","Pays","Score","Stade","Téléphone","Email","Site","Instagram","Priorité","Dernier Contact"];
@@ -652,6 +851,108 @@ export default function UltraAgent() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `prospects_${new Date().toISOString().slice(0,10)}.csv`; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // ─── ADD MANUAL PROSPECT ──────────────────────────────────────────────────
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newProspect, setNewProspect] = useState({ name: "", type: "CBD Shop", city: "", country: "FR", phone: "", email: "", website: "", instagram: "", notes: "" });
+
+  const addManualProspect = () => {
+    if (!newProspect.name.trim()) return;
+    const c = COUNTRIES.find(x => x.code === newProspect.country);
+    const p = {
+      ...newProspect,
+      id: `p${Date.now()}${Math.random().toString(36).slice(2,6)}`,
+      stage: "discovered",
+      countryName: c?.name || newProspect.country,
+      flag: c?.flag || "🏳️",
+      addedAt: new Date().toISOString(),
+      interactions: [],
+      score: 50,
+    };
+    setProspects(prev => [...prev, p]);
+    setNewProspect({ name: "", type: "CBD Shop", city: "", country: "FR", phone: "", email: "", website: "", instagram: "", notes: "" });
+    setShowAddModal(false);
+    log("➕", `Prospect ajouté manuellement: ${p.name}`);
+  };
+
+  // ─── IMPORT CSV / JSON ────────────────────────────────────────────────────
+  const importFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = ev.target.result;
+        let imported = [];
+
+        if (file.name.endsWith(".json")) {
+          // JSON import
+          const data = JSON.parse(text);
+          imported = (Array.isArray(data) ? data : [data]).map(r => ({
+            name: r.name || r.nom || r.Nom || "",
+            type: r.type || r.Type || "CBD Shop",
+            city: r.city || r.ville || r.Ville || "",
+            country: r.country || r.pays || r.Pays || "FR",
+            phone: r.phone || r.telephone || r.Telephone || r.tel || "",
+            email: r.email || r.Email || r.mail || "",
+            website: r.website || r.site || r.Site || "",
+            instagram: r.instagram || r.Instagram || r.insta || "",
+            notes: r.notes || r.Notes || "",
+            score: r.score || 50,
+          }));
+        } else {
+          // CSV import
+          const lines = text.split("\n").filter(l => l.trim());
+          if (lines.length < 2) return;
+          const headers = lines[0].split(/[,;]/).map(h => h.replace(/"/g, "").trim().toLowerCase());
+          for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(/[,;]/).map(v => v.replace(/"/g, "").trim());
+            const row = {};
+            headers.forEach((h, idx) => { row[h] = values[idx] || ""; });
+            imported.push({
+              name: row.nom || row.name || row.entreprise || row.societe || "",
+              type: row.type || "CBD Shop",
+              city: row.ville || row.city || "",
+              country: row.pays || row.country || "FR",
+              phone: row.telephone || row.phone || row.tel || "",
+              email: row.email || row.mail || "",
+              website: row.site || row.website || row.url || "",
+              instagram: row.instagram || row.insta || "",
+              notes: row.notes || row.commentaire || "",
+              score: parseInt(row.score) || 50,
+            });
+          }
+        }
+
+        // Add to prospects with dedup
+        const news = imported.filter(r => r.name).map(r => {
+          const c = COUNTRIES.find(x => x.code === r.country || x.name.toLowerCase() === r.country.toLowerCase());
+          return {
+            ...r,
+            id: `p${Date.now()}${Math.random().toString(36).slice(2,6)}`,
+            stage: "discovered",
+            country: c?.code || r.country,
+            countryName: c?.name || r.country,
+            flag: c?.flag || "🏳️",
+            addedAt: new Date().toISOString(),
+            interactions: [],
+          };
+        });
+
+        setProspects(prev => {
+          const existing = new Set(prev.map(p => p.name.toLowerCase()));
+          const unique = news.filter(n => !existing.has(n.name.toLowerCase()));
+          return [...prev, ...unique];
+        });
+
+        log("📥", `${news.length} prospects importés depuis ${file.name}`);
+      } catch (err) {
+        log("❌", `Erreur import: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   // ─── RENDER HELPERS (stable references via useCallback) ────────────────
@@ -717,10 +1018,17 @@ export default function UltraAgent() {
           </nav>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {gmailConnected ? (
+              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#10b981", fontFamily: "'JetBrains Mono'" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981" }} />📧 {gmailEmail.split('@')[0]}
+              </span>
+            ) : (
+              <button className="g-btn g-ghost" onClick={connectGmail} style={{ fontSize: 10, padding: "4px 10px" }}>📧 Connecter Gmail</button>
+            )}
             {agentRunning && <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "#10b981", fontFamily: "'JetBrains Mono'" }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", animation: "pulse 1s infinite" }} />AGENT ACTIF
             </span>}
-            <button className="g-btn" onClick={agentRunning ? stopAgent : runAgent} style={{
+            <button className="g-btn" onClick={agentRunning ? stopAgent : runFullAgent} style={{
               background: agentRunning ? "linear-gradient(135deg,#dc2626,#ef4444)" : "linear-gradient(135deg,#059669,#10b981)",
               color: "#fff", boxShadow: agentRunning ? "0 0 20px rgba(239,68,68,.25)" : "0 0 20px rgba(16,185,129,.25)",
               animation: agentRunning ? "glow 2s infinite" : "none",
@@ -807,10 +1115,15 @@ export default function UltraAgent() {
               <div className="g-card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <h3 style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>Actions Rapides</h3>
                 <button className="g-btn g-primary" onClick={() => setView("search")} style={{ width: "100%", justifyContent: "center" }}>🔍 Prospecter</button>
-                <button className="g-btn g-success" onClick={agentRunning ? stopAgent : runAgent} style={{ width: "100%", justifyContent: "center" }}>🤖 Agent Auto</button>
+                <button className="g-btn g-success" onClick={agentRunning ? stopAgent : runFullAgent} style={{ width: "100%", justifyContent: "center" }}>🤖 Agent Auto</button>
                 <button className="g-btn g-ghost" onClick={doForecast} disabled={!!loading} style={{ width: "100%", justifyContent: "center" }}>📊 Prévisions</button>
                 <button className="g-btn g-ghost" onClick={exportCSV} style={{ width: "100%", justifyContent: "center" }}>📥 Export CSV</button>
                 <button className="g-btn g-ghost" onClick={() => setView("intel")} style={{ width: "100%", justifyContent: "center" }}>🧠 Veille Concur.</button>
+                {gmailConnected ? (
+                  <button className="g-btn g-ghost" onClick={checkProspectReplies} style={{ width: "100%", justifyContent: "center" }}>📬 Vérifier Réponses</button>
+                ) : (
+                  <button className="g-btn g-ghost" onClick={connectGmail} style={{ width: "100%", justifyContent: "center" }}>📧 Connecter Gmail</button>
+                )}
               </div>
             </div>
 
@@ -839,8 +1152,20 @@ export default function UltraAgent() {
         {/* ═══ SEARCH / PROSPECTION ═══════════════════════════════════════════ */}
         {view === "search" && (
           <div style={{ animation: "fadeUp .4s ease" }}>
+            {/* Search + Add + Import */}
             <div className="g-card" style={{ marginBottom: 16 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", marginBottom: 14 }}>🔍 Recherche de Prospects CBD en Europe</h3>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", margin: 0 }}>🔍 Recherche & Ajout de Prospects</h3>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="g-btn g-primary" onClick={() => setShowAddModal(true)} style={{ fontSize: 11 }}>➕ Ajouter</button>
+                  <label className="g-btn g-ghost" style={{ fontSize: 11, cursor: "pointer" }}>
+                    📥 Importer CSV/JSON
+                    <input type="file" accept=".csv,.json,.txt" onChange={importFile} style={{ display: "none" }} />
+                  </label>
+                </div>
+              </div>
+
+              {/* AI Search */}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ flex: "0 0 220px" }}>
                   <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Pays</label>
@@ -849,11 +1174,11 @@ export default function UltraAgent() {
                   </select>
                 </div>
                 <div style={{ flex: 1, minWidth: 180 }}>
-                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Ville</label>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Ville (optionnel)</label>
                   <input className="g-input" value={searchForm.city} onChange={e => setSearchForm(p => ({ ...p, city: e.target.value }))} placeholder="Toutes les villes principales..." />
                 </div>
                 <button className="g-btn g-primary" onClick={doSearch} disabled={!!loading} style={{ height: 38 }}>
-                  {loading === "search" ? <LoadingDots /> : "🔍 Rechercher"}
+                  {loading === "search" ? <><LoadingDots /> Recherche IA...</> : "🔍 Rechercher"}
                 </button>
               </div>
 
@@ -868,26 +1193,33 @@ export default function UltraAgent() {
                   ))}
                 </div>
               )}
+
+              <div style={{ fontSize: 10, color: "#475569", marginTop: 8, padding: "6px 10px", background: "rgba(99,102,241,.04)", borderRadius: 6 }}>
+                💡 La recherche IA génère des prospects crédibles pour la zone choisie. Pour des données réelles, importe un fichier CSV/JSON ou ajoute manuellement.
+              </div>
             </div>
 
             {/* Multi-country scan */}
             <div className="g-card" style={{ marginBottom: 16 }}>
-              <h4 style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 10 }}>Scan Multi-Pays Rapide</h4>
+              <h4 style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 10 }}>Scan Rapide par Pays</h4>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {COUNTRIES.map(c => (
                   <button key={c.code} className="g-btn g-ghost" style={{ padding: "6px 12px" }}
+                    disabled={!!loading}
                     onClick={async () => {
                       setSearchForm({ country: c.code, city: "" });
                       setLoading("search");
                       log("🔍", `Scan rapide: ${c.name}`);
-                      const results = await searchProspects(c.name, "");
-                      if (Array.isArray(results)) {
+                      const results = await searchProspectsReal(c.name, "");
+                      if (Array.isArray(results) && results.length > 0) {
                         const news = results.map(r => ({ ...r, id: `p${Date.now()}${Math.random().toString(36).slice(2,6)}`, stage: "discovered", country: c.code, countryName: c.name, flag: c.flag, addedAt: new Date().toISOString(), interactions: [], score: r.score || 50 }));
                         setProspects(prev => {
                           const existing = new Set(prev.map(p => p.name.toLowerCase()));
                           return [...prev, ...news.filter(n => !existing.has(n.name.toLowerCase()))];
                         });
                         log("✅", `+${results.length} prospects en ${c.name}`);
+                      } else {
+                        log("⚠️", `Aucun résultat pour ${c.name} — vérifiez la connexion API`);
                       }
                       setLoading("");
                     }}>
@@ -902,6 +1234,11 @@ export default function UltraAgent() {
               <h4 style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 10 }}>
                 Derniers Découverts ({prospects.filter(p => p.stage === "discovered").length})
               </h4>
+              {prospects.filter(p => p.stage === "discovered").length === 0 && (
+                <div style={{ color: "#475569", fontSize: 12, textAlign: "center", padding: 30 }}>
+                  Aucun prospect pour le moment. Lancez une recherche, ajoutez manuellement, ou importez un fichier.
+                </div>
+              )}
               {prospects.filter(p => p.stage === "discovered").slice(-15).reverse().map(p => (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(99,102,241,.03)", borderRadius: 8, marginBottom: 4, border: "1px solid rgba(99,102,241,.05)" }}>
                   <span style={{ fontSize: 16 }}>{p.flag}</span>
@@ -1043,33 +1380,68 @@ export default function UltraAgent() {
             <div className="g-card" style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9", margin: 0 }}>🤖 Agent Commercial Autonome</h3>
-                  <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>Cycle complet: Scan → Qualification → Outreach → Suivi automatique</p>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9", margin: 0 }}>🤖 Agent Commercial — Contrôle par Étape</h3>
+                  <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>Lance chaque étape individuellement ou le cycle complet</p>
                 </div>
-                <button className="g-btn" onClick={agentRunning ? stopAgent : runAgent} style={{
-                  background: agentRunning ? "linear-gradient(135deg,#dc2626,#ef4444)" : "linear-gradient(135deg,#059669,#10b981)",
-                  color: "#fff", padding: "12px 28px", fontSize: 14,
-                }}>{agentRunning ? "⏹ Arrêter" : "▶ Lancer Cycle Complet"}</button>
+                {agentRunning && <button className="g-btn g-danger" onClick={stopAgent} style={{ padding: "10px 24px" }}>⏹ Arrêter</button>}
               </div>
 
-              {/* Workflow Steps */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
+              {/* Step-by-step controls */}
+              <div className="g-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
                 {[
-                  { n: "1", label: "Scan", desc: "18 pays EU", icon: "🌍", color: "#6366f1" },
-                  { n: "2", label: "Identification", desc: "10 types de cibles", icon: "🎯", color: "#8b5cf6" },
-                  { n: "3", label: "Qualification", desc: "Scoring + Priorité", icon: "🧠", color: "#ec4899" },
-                  { n: "4", label: "Prospection", desc: "Multi-canal IA", icon: "📧", color: "#f59e0b" },
-                  { n: "5", label: "Relance", desc: "Séquences auto", icon: "🔄", color: "#06b6d4" },
-                  { n: "6", label: "Closing", desc: "Négociation IA", icon: "🤝", color: "#10b981" },
-                ].map(s => (
-                  <div key={s.n} style={{ background: `${s.color}08`, borderRadius: 10, padding: 12, textAlign: "center", border: `1px solid ${s.color}15` }}>
-                    <div style={{ fontSize: 22, marginBottom: 3 }}>{s.icon}</div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: s.color }}>{s.n}. {s.label}</div>
-                    <div style={{ fontSize: 9, color: "#64748b", marginTop: 2 }}>{s.desc}</div>
+                  { id: "scan", n: "1", label: "🌍 Scanner les Marchés", desc: `Recherche de prospects CBD dans ${COUNTRIES.length} pays européens`, color: "#6366f1", count: prospects.filter(p => p.stage === "discovered").length, countLabel: "découverts" },
+                  { id: "qualify", n: "2", label: "🧠 Qualifier les Prospects", desc: "Scoring IA, priorité (Hot/Warm/Cold), produits recommandés", color: "#8b5cf6", count: prospects.filter(p => p.qualification).length, countLabel: "qualifiés" },
+                  { id: "outreach", n: "3", label: "📧 Prospection Multi-Canal", desc: "Messages personnalisés par email, WhatsApp, Instagram, LinkedIn", color: "#f59e0b", count: prospects.filter(p => p.stage === "contacted").length, countLabel: "contactés" },
+                  { id: "followup", n: "4", label: "🔄 Relances Automatiques", desc: "Suivi des prospects contactés sans réponse après 3 jours", color: "#06b6d4", count: prospects.filter(p => p.interactions?.some(i => i.stage === "followup")).length, countLabel: "relancés" },
+                ].map(step => (
+                  <div key={step.id} style={{ background: `${step.color}06`, borderRadius: 12, padding: 16, border: `1px solid ${step.color}18`, display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", marginBottom: 2 }}>{step.label}</div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>{step.desc}</div>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: step.color, fontFamily: "'JetBrains Mono'" }}>{step.count}</div>
+                        <div style={{ fontSize: 8, color: "#64748b" }}>{step.countLabel}</div>
+                      </div>
+                    </div>
+                    <button className="g-btn" disabled={agentRunning} onClick={() => { setAgentLog([]); runAgentStep(step.id); }}
+                      style={{ background: `linear-gradient(135deg, ${step.color}, ${step.color}cc)`, color: "#fff", justifyContent: "center", opacity: agentRunning ? 0.5 : 1 }}>
+                      {agentRunning ? <LoadingDots /> : `▶ Lancer Étape ${step.n}`}
+                    </button>
                   </div>
                 ))}
               </div>
+
+              {/* Full cycle button */}
+              <button className="g-btn" disabled={agentRunning} onClick={runFullAgent}
+                style={{ width: "100%", marginTop: 12, padding: "14px 24px", justifyContent: "center", fontSize: 14,
+                  background: agentRunning ? "rgba(100,116,139,.2)" : "linear-gradient(135deg,#059669,#10b981)", color: "#fff",
+                  opacity: agentRunning ? 0.5 : 1 }}>
+                {agentRunning ? <><LoadingDots /> Agent en cours...</> : "🚀 Lancer le Cycle Complet (4 étapes)"}
+              </button>
             </div>
+
+            {/* Live Stats */}
+            {agentRunning && (
+              <div className="g-card" style={{ marginBottom: 16, border: "1px solid rgba(16,185,129,.2)", background: "rgba(16,185,129,.04)" }}>
+                <h4 style={{ fontSize: 12, fontWeight: 600, color: "#10b981", marginBottom: 10 }}>📡 Progression en Direct</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 8 }}>
+                  {[
+                    { label: "Prospects", value: prospects.length, color: "#a5b4fc" },
+                    { label: "Qualifiés", value: prospects.filter(p => p.qualification).length, color: "#8b5cf6" },
+                    { label: "Contactés", value: prospects.filter(p => p.stage === "contacted").length, color: "#f59e0b" },
+                    { label: "🔥 Hot", value: prospects.filter(p => p.qualification?.priority === "hot").length, color: "#ef4444" },
+                    { label: "Pays", value: new Set(prospects.map(p => p.country)).size, color: "#06b6d4" },
+                  ].map((s, i) => (
+                    <div key={i} style={{ textAlign: "center", padding: 8, background: "rgba(0,0,0,.2)", borderRadius: 8 }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: s.color, fontFamily: "'JetBrains Mono'" }}>{s.value}</div>
+                      <div style={{ fontSize: 9, color: "#64748b" }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Sequences */}
             <div className="g-card" style={{ marginBottom: 16 }}>
@@ -1405,6 +1777,30 @@ export default function UltraAgent() {
                     <button className="g-btn g-primary" onClick={() => doMessage(selected, "email", "sample")} disabled={!!loading}>📦 Proposition Échantillon</button>
                     <button className="g-btn" style={{ background: "linear-gradient(135deg,#f59e0b,#f97316)", color: "#fff" }} onClick={() => doMessage(selected, "email", "closing")} disabled={!!loading}>🎯 Closing</button>
                   </div>
+                  {/* Real email send */}
+                  {aiOutput && selected.email && gmailConnected && (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center" }}>
+                      <button className="g-btn" disabled={sendingEmail} onClick={async () => {
+                        const subjectMatch = aiOutput.match(/(?:Objet|Subject|Sujet)\s*:\s*(.+)/i);
+                        const subject = subjectMatch?.[1]?.trim() || `Partenariat CBD — L'Entrepôt du Chanvrier`;
+                        const body = aiOutput.replace(/(?:Objet|Subject|Sujet)\s*:.+\n?/i, '').trim();
+                        await sendEmailReal(selected, subject, body);
+                      }} style={{ background: "linear-gradient(135deg,#059669,#10b981)", color: "#fff" }}>
+                        {sendingEmail ? <LoadingDots /> : "📧 ENVOYER VIA GMAIL"}
+                      </button>
+                      <span style={{ fontSize: 10, color: "#64748b" }}>→ {selected.email}</span>
+                    </div>
+                  )}
+                  {!selected.email && aiOutput && (
+                    <div style={{ fontSize: 10, color: "#f59e0b", marginBottom: 8, padding: "4px 8px", background: "rgba(245,158,11,.08)", borderRadius: 6 }}>
+                      ⚠️ Pas d'email pour ce prospect. Ajoutez-en un dans les infos pour envoyer via Gmail.
+                    </div>
+                  )}
+                  {emailStatus && (
+                    <div style={{ fontSize: 11, color: emailStatus.startsWith("✅") ? "#10b981" : emailStatus.startsWith("❌") ? "#ef4444" : "#f59e0b", marginBottom: 8 }}>
+                      {emailStatus}
+                    </div>
+                  )}
                   {loading && <div style={{ padding: 20, textAlign: "center" }}><LoadingDots /></div>}
                   {aiOutput && (
                     <div style={{ background: "rgba(16,185,129,.05)", borderRadius: 10, padding: 14, border: "1px solid rgba(16,185,129,.12)" }}>
@@ -1499,6 +1895,75 @@ export default function UltraAgent() {
                   setSelected(null);
                 }}>🗑️ Supprimer</button>
                 <button className="g-btn g-ghost" onClick={() => { setSelected(null); setAiOutput(""); setAbTest(null); }}>Fermer</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* ═══ ADD PROSPECT MODAL ══════════════════════════════════════════════ */}
+        {showAddModal && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", backdropFilter: "blur(10px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}
+            onClick={() => setShowAddModal(false)}>
+            <div style={{ background: "#0a0d16", border: "1px solid rgba(99,102,241,.15)", borderRadius: 18, width: "90%", maxWidth: 500, padding: 24 }}
+              onClick={e => e.stopPropagation()}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9", marginBottom: 16 }}>➕ Ajouter un Prospect</h3>
+              <div className="g-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ gridColumn: "1/-1" }}>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Nom de l'entreprise *</label>
+                  <input className="g-input" value={newProspect.name} onChange={e => setNewProspect(p => ({ ...p, name: e.target.value }))} placeholder="Ex: Green CBD Shop" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Type</label>
+                  <select className="g-select" style={{ width: "100%" }} value={newProspect.type} onChange={e => setNewProspect(p => ({ ...p, type: e.target.value }))}>
+                    {PROSPECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Pays</label>
+                  <select className="g-select" style={{ width: "100%" }} value={newProspect.country} onChange={e => setNewProspect(p => ({ ...p, country: e.target.value }))}>
+                    {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Ville</label>
+                  <input className="g-input" value={newProspect.city} onChange={e => setNewProspect(p => ({ ...p, city: e.target.value }))} placeholder="Paris" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Téléphone</label>
+                  <input className="g-input" value={newProspect.phone} onChange={e => setNewProspect(p => ({ ...p, phone: e.target.value }))} placeholder="+33..." />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Email</label>
+                  <input className="g-input" value={newProspect.email} onChange={e => setNewProspect(p => ({ ...p, email: e.target.value }))} placeholder="contact@..." />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Site web</label>
+                  <input className="g-input" value={newProspect.website} onChange={e => setNewProspect(p => ({ ...p, website: e.target.value }))} placeholder="https://..." />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Instagram</label>
+                  <input className="g-input" value={newProspect.instagram} onChange={e => setNewProspect(p => ({ ...p, instagram: e.target.value }))} placeholder="@..." />
+                </div>
+                <div style={{ gridColumn: "1/-1" }}>
+                  <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 }}>Notes</label>
+                  <input className="g-input" value={newProspect.notes} onChange={e => setNewProspect(p => ({ ...p, notes: e.target.value }))} placeholder="Infos complémentaires..." />
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+                <button className="g-btn g-ghost" onClick={() => setShowAddModal(false)}>Annuler</button>
+                <button className="g-btn g-primary" onClick={addManualProspect} disabled={!newProspect.name.trim()}>➕ Ajouter</button>
+              </div>
+
+              {/* Import section inside modal */}
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(99,102,241,.1)" }}>
+                <h4 style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 8 }}>📥 Import en masse (CSV / JSON)</h4>
+                <p style={{ fontSize: 10, color: "#475569", marginBottom: 8 }}>
+                  Colonnes CSV acceptées : nom, type, ville, pays, telephone, email, site, instagram, notes, score<br/>
+                  JSON : tableau d'objets avec les mêmes champs
+                </p>
+                <label className="g-btn g-ghost" style={{ cursor: "pointer", width: "100%", justifyContent: "center" }}>
+                  📂 Choisir un fichier CSV ou JSON
+                  <input type="file" accept=".csv,.json,.txt" onChange={(e) => { importFile(e); setShowAddModal(false); }} style={{ display: "none" }} />
+                </label>
               </div>
             </div>
           </div>
