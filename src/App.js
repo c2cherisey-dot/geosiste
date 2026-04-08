@@ -92,12 +92,23 @@ const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const SUPA_HEADERS = { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=minimal" };
 
 const supa = {
-  // Fetch all rows from a table
+  // Fetch all rows from a table (paginated — Supabase defaults to 1000 max per request)
   async getAll(table) {
     try {
-      const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=created_at.desc&limit=10000`, { headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}` } });
-      if (!r.ok) return null;
-      return await r.json();
+      let all = [];
+      let offset = 0;
+      const pageSize = 1000;
+      while (true) {
+        const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=created_at.desc&limit=${pageSize}&offset=${offset}`, 
+          { headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}` } });
+        if (!r.ok) return all.length > 0 ? all : null;
+        const data = await r.json();
+        if (!data || data.length === 0) break;
+        all = [...all, ...data];
+        if (data.length < pageSize) break; // last page
+        offset += pageSize;
+      }
+      return all.length > 0 ? all : null;
     } catch { return null; }
   },
   // Upsert (insert or update) a single row
@@ -274,31 +285,55 @@ export default function GeosisteCRM() {
     const u = LS.get("crm_user");
     if (u) setUser(u);
     
-    // Load data — try Supabase first
+    // Load data — try Supabase first, ALWAYS prefer cloud data
     (async () => {
       const ok = await supa.ping();
       setSupaOk(ok);
       
       if (ok) {
-        // Load from Supabase
+        // Load from Supabase — this is the source of truth
         const [supaUsers, supaProspects, supaActivities, supaQuotes] = await Promise.all([
           supa.getAll("crm_users"), supa.getAll("crm_prospects"),
           supa.getAll("crm_activities"), supa.getAll("crm_quotes"),
         ]);
-        if (supaUsers?.length > 0) setUsers(supaUsers);
-        else setUsers(LS.get("crm_users") || [{ id:"admin1",name:"Carl",email:"admin@chanvrier.com",password:"admin",role:"admin",createdAt:new Date().toISOString() }]);
         
-        if (supaProspects?.length > 0) {
-          setProspects(supaProspects.map(r => r.data ? { ...r.data, _supaId: r.id } : r));
+        // Users
+        if (supaUsers?.length > 0) {
+          setUsers(supaUsers);
+          LS.set("crm_users", supaUsers);
         } else {
+          setUsers(LS.get("crm_users") || [{ id:"admin1",name:"Carl",email:"admin@chanvrier.com",password:"admin",role:"admin",createdAt:new Date().toISOString() }]);
+        }
+        
+        // Prospects — Supabase is ALWAYS the source of truth
+        if (supaProspects?.length > 0) {
+          const parsed = supaProspects.map(r => r.data ? { ...r.data } : r);
+          setProspects(parsed);
+          LS.set("crm_prospects", parsed); // sync localStorage from cloud
+        } else {
+          // Supabase is empty — load from localStorage (first time / not migrated yet)
           setProspects(LS.get("crm_prospects") || []);
         }
-        if (supaActivities?.length > 0) setActivities(supaActivities.map(r => r.data || r));
-        else setActivities(LS.get("crm_activities") || []);
-        if (supaQuotes?.length > 0) setQuotes(supaQuotes.map(r => r.data || r));
-        else setQuotes(LS.get("crm_quotes") || []);
+        
+        // Activities
+        if (supaActivities?.length > 0) {
+          const parsed = supaActivities.map(r => r.data || r);
+          setActivities(parsed);
+          LS.set("crm_activities", parsed);
+        } else {
+          setActivities(LS.get("crm_activities") || []);
+        }
+        
+        // Quotes
+        if (supaQuotes?.length > 0) {
+          const parsed = supaQuotes.map(r => r.data || r);
+          setQuotes(parsed);
+          LS.set("crm_quotes", parsed);
+        } else {
+          setQuotes(LS.get("crm_quotes") || []);
+        }
       } else {
-        // Fallback to localStorage
+        // Supabase offline — fallback to localStorage
         setUsers(LS.get("crm_users") || [{ id:"admin1",name:"Carl",email:"admin@chanvrier.com",password:"admin",role:"admin",createdAt:new Date().toISOString() }]);
         setProspects(LS.get("crm_prospects") || []);
         setActivities(LS.get("crm_activities") || []);
