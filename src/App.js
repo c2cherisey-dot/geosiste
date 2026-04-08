@@ -272,6 +272,7 @@ export default function GeosisteCRM() {
   const [gmailOk, setGmailOk] = useState(false);
   const [gmailEmail, setGmailEmail] = useState("");
   const agentRef = useRef({ running: false });
+  const prospectsRef = useRef([]);
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentLog, setAgentLog] = useState([]);
   const [adminTab, setAdminTab] = useState("team");
@@ -384,6 +385,18 @@ export default function GeosisteCRM() {
   }, []);
 
   // ─── SAVE: localStorage always + debounced Supabase sync ──────────────
+  // Keep prospectsRef in sync for async closures
+  useEffect(() => { prospectsRef.current = prospects; }, [prospects]);
+  
+  // Helper: update prospects in both state AND ref (for async loops)
+  const updateProspect = (id, changes) => {
+    setProspects(prev => {
+      const updated = prev.map(x => x.id === id ? { ...x, ...changes } : x);
+      prospectsRef.current = updated; // instant ref update
+      return updated;
+    });
+  };
+  
   const syncToSupabase = useCallback(async (prosp, acts, qts) => {
     if (!supaOk) return;
     // Sync prospects
@@ -1005,10 +1018,12 @@ export default function GeosisteCRM() {
     
     while (enrichRef.current.running[type]) {
       batch++;
-      const targets = type === "noemail" ? prospects.filter(p => !p.email && p.website) :
-        type === "nocompany" ? prospects.filter(p => !p.pappersData && !p.siret && p.country === "FR") :
-        type === "semrush" ? prospects.filter(p => !p.semrushData && p.website) :
-        prospects.filter(p => !p.qualification);
+      // Use ref for fresh data (avoids stale closure)
+      const currentP = prospectsRef.current;
+      const targets = type === "noemail" ? currentP.filter(p => !p.email && p.website) :
+        type === "nocompany" ? currentP.filter(p => !p.pappersData && !p.siret && p.country === "FR") :
+        type === "semrush" ? currentP.filter(p => !p.semrushData && p.website) :
+        currentP.filter(p => !p.qualification);
       
       if (targets.length === 0) {
         setEnrichLog(prev => [{ id:Date.now(), msg:`✅ ${type} TERMINÉ ! ${totalDone} traités — plus rien` },...prev].slice(0,80));
@@ -1026,16 +1041,16 @@ export default function GeosisteCRM() {
           const emailData = await enrichEmail(p);
           if (emailData?.emails?.[0]) {
             const bestEmail = emailData.emails.sort((a,b) => b.confidence - a.confidence)[0];
-            setProspects(prev => prev.map(x => x.id === p.id ? { ...x, email: bestEmail.email, emailConfidence: bestEmail.confidence,
-              contactName: `${bestEmail.firstName} ${bestEmail.lastName}`.trim(), contactPosition: bestEmail.position || '' } : x));
+            updateProspect(p.id, { email: bestEmail.email, emailConfidence: bestEmail.confidence,
+              contactName: `${bestEmail.firstName} ${bestEmail.lastName}`.trim(), contactPosition: bestEmail.position || '' });
           }
         } else if (type === "nocompany") {
           setEnrichLog(prev => [{ id:Date.now(), msg:`🏢 ${totalDone} Pappers: ${p.name}` },...prev].slice(0,80));
           const company = await enrichPappers(p);
           if (company) {
-            setProspects(prev => prev.map(x => x.id === p.id ? { ...x, pappersData: company,
+            updateProspect(p.id, { pappersData: company,
               siret: company.siret||'', dirigeant: company.dirigeant||'', effectif: company.effectif||'',
-              chiffreAffaires: company.chiffreAffaires||'', codeNAF: company.codeNAF||'', activite: company.activite||'' } : x));
+              chiffreAffaires: company.chiffreAffaires||'', codeNAF: company.codeNAF||'', activite: company.activite||'' });
           }
         } else if (type === "semrush") {
           setEnrichLog(prev => [{ id:Date.now(), msg:`📊 ${totalDone} SEMrush: ${p.name}` },...prev].slice(0,80));
@@ -1043,25 +1058,25 @@ export default function GeosisteCRM() {
           if (sem) {
             const ov = sem.overview || {};
             const trafficBoost = Math.min(30, Math.round(Math.log10(Math.max(1, ov.organicTraffic)) * 8));
-            setProspects(prev => prev.map(x => x.id === p.id ? { ...x, semrushData: sem,
+            updateProspect(p.id, { semrushData: sem,
               organicTraffic: ov.organicTraffic||0, organicKeywords: ov.organicKeywords||0,
               authorityScore: ov.authorityScore||0, paidTraffic: ov.paidTraffic||0, paidCost: ov.paidCost||0,
               topKeywords: sem.topKeywords||[], trafficTrend: sem.trafficHistory||[], semCompetitors: sem.competitors||[],
-              score: Math.min(99, (p.score||50) + trafficBoost) } : x));
+              score: Math.min(99, (p.score||50) + trafficBoost) });
           }
         } else {
           setEnrichLog(prev => [{ id:Date.now(), msg:`🧠 ${totalDone} Qualification: ${p.name}` },...prev].slice(0,80));
           const q = await ai(`${AI_SYS}\n\nQualifie. JSON uniquement:\n{"score":1-100,"priority":"hot|warm|cold","estimated_monthly_volume":"...","lifetime_value":"...","best_channel":"email|phone","approach_strategy":"...","recommended_products":[{"name":"...","reason":"..."}],"talking_points":["..."]}`,
             `Qualifie: ${p.name} (${p.type}) ${p.city}, ${p.countryName}. ${p.notes||""} ${p.rating?"Note:"+p.rating:""} ${p.email?"Email:"+p.email:""} ${p.siret?"SIRET:"+p.siret:""} ${p.chiffreAffaires?"CA:"+p.chiffreAffaires:""} ${p.organicTraffic?"Trafic web:"+p.organicTraffic+"/mois":""} ${p.authorityScore?"Autorité SEO:"+p.authorityScore:""}`, true);
           if (q) {
-            setProspects(prev => prev.map(x => x.id === p.id ? { ...x, qualification: q, score: q.score } : x));
+            updateProspect(p.id, { qualification: q, score: q.score });
           }
         }
         await new Promise(r => setTimeout(r, 150));
       }
       
       // Sync after each batch
-      if (supaOk) { try { await syncToSupabase(prospects, activities, quotes); } catch {} }
+      if (supaOk) { try { await syncToSupabase(prospectsRef.current, activities, quotes); } catch {} }
       setEnrichLog(prev => [{ id:Date.now(), msg:`☁️ Sync (${totalDone} traités)` },...prev].slice(0,80));
       await new Promise(r => setTimeout(r, 2000));
     }
