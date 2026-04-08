@@ -358,6 +358,29 @@ export default function GeosisteCRM() {
         if (d.refreshToken) { localStorage.setItem('gmail_refresh_token', d.refreshToken); setGmailOk(true); window.history.replaceState({}, '', window.location.pathname); }
       });
     }
+
+    // Live sync: poll Supabase every 30 seconds for changes from other devices
+    const syncInterval = setInterval(async () => {
+      try {
+        const ok = await supa.ping();
+        if (!ok) return;
+        const supaProspects = await supa.getAll("crm_prospects");
+        if (supaProspects?.length > 0) {
+          const parsed = supaProspects.map(r => r.data ? { ...r.data } : r);
+          // Only update if Supabase has more data (another device added prospects)
+          setProspects(prev => {
+            if (parsed.length > prev.length) {
+              const prevIds = new Set(prev.map(p => p.id));
+              const newOnes = parsed.filter(p => !prevIds.has(p.id));
+              if (newOnes.length > 0) return [...prev, ...newOnes];
+            }
+            return prev;
+          });
+        }
+      } catch {}
+    }, 30000);
+
+    return () => clearInterval(syncInterval);
   }, []);
 
   // ─── SAVE: localStorage always + debounced Supabase sync ──────────────
@@ -965,67 +988,89 @@ export default function GeosisteCRM() {
 
   // ─── BULK ENRICHMENT ──────────────────────────────────────────────────────
   const [enrichLog, setEnrichLog] = useState([]);
-  const [enrichRunning, setEnrichRunning] = useState(false);
-  const enrichRef = useRef({ running: false });
+  const [enrichActive, setEnrichActive] = useState({}); // { noemail: true, nocompany: false, semrush: false, qualify: true }
+  const enrichRef = useRef({ running: {} }); // per-module stop
 
-  const stopEnrichment = () => { enrichRef.current.running = false; setEnrichRunning(false); };
+  const stopEnrichment = (type) => { 
+    if (type) { enrichRef.current.running[type] = false; setEnrichActive(prev => ({...prev, [type]: false})); }
+    else { enrichRef.current.running = {}; setEnrichActive({}); } // stop all
+  };
 
   const runEnrichment = async (type) => {
-    enrichRef.current.running = true;
-    setEnrichRunning(true); setEnrichLog([{ id:Date.now(), msg:`▶ Démarrage ${type}...` }]);
-    const targets = type === "noemail" ? myProspects.filter(p => !p.email && p.website) :
-      type === "nocompany" ? myProspects.filter(p => !p.pappersData && !p.siret && p.country === "FR") :
-      type === "semrush" ? myProspects.filter(p => !p.semrushData && p.website) :
-      myProspects.filter(p => !p.qualification);
-    let done = 0;
-    for (const p of targets.slice(0, 30)) {
-      if (!enrichRef.current.running) { setEnrichLog(prev => [{ id:Date.now(), msg:`⏹ Arrêté après ${done} prospects` },...prev]); break; }
-      done++;
-      if (type === "noemail") {
-        setEnrichLog(prev => [{ id:Date.now(), msg:`📧 ${done}/${Math.min(30,targets.length)} Email: ${p.name}` },...prev].slice(0,50));
-        const emailData = await enrichEmail(p);
-        if (emailData?.emails?.[0]) {
-          const bestEmail = emailData.emails.sort((a,b) => b.confidence - a.confidence)[0];
-          setProspects(prev => prev.map(x => x.id === p.id ? { ...x, email: bestEmail.email, emailConfidence: bestEmail.confidence,
-            contactName: `${bestEmail.firstName} ${bestEmail.lastName}`.trim(), contactPosition: bestEmail.position || '' } : x));
-          addActivity(p.id, p.name, "Email trouvé", `${bestEmail.email} (${bestEmail.confidence}%)`);
-        }
-      } else if (type === "nocompany") {
-        setEnrichLog(prev => [{ id:Date.now(), msg:`🏢 ${done}/${Math.min(30,targets.length)} Pappers: ${p.name}` },...prev].slice(0,50));
-        const company = await enrichPappers(p);
-        if (company) {
-          setProspects(prev => prev.map(x => x.id === p.id ? { ...x, pappersData: company,
-            siret: company.siret||'', dirigeant: company.dirigeant||'', effectif: company.effectif||'',
-            chiffreAffaires: company.chiffreAffaires||'', codeNAF: company.codeNAF||'', activite: company.activite||'' } : x));
-          addActivity(p.id, p.name, "Enrichi Pappers", `SIRET: ${company.siret||'N/A'} — CA: ${company.chiffreAffaires||'N/A'}`);
-        }
-      } else if (type === "semrush") {
-        setEnrichLog(prev => [{ id:Date.now(), msg:`📊 ${done}/${Math.min(30,targets.length)} SEMrush: ${p.name}` },...prev].slice(0,50));
-        const sem = await enrichSemrush(p);
-        if (sem) {
-          const ov = sem.overview || {};
-          const trafficBoost = Math.min(30, Math.round(Math.log10(Math.max(1, ov.organicTraffic)) * 8));
-          setProspects(prev => prev.map(x => x.id === p.id ? { ...x, semrushData: sem,
-            organicTraffic: ov.organicTraffic||0, organicKeywords: ov.organicKeywords||0,
-            authorityScore: ov.authorityScore||0, paidTraffic: ov.paidTraffic||0, paidCost: ov.paidCost||0,
-            topKeywords: sem.topKeywords||[], trafficTrend: sem.trafficHistory||[], semCompetitors: sem.competitors||[],
-            score: Math.min(99, (x.id===p.id?(x.score||50):0) + trafficBoost) } : x));
-          addActivity(p.id, p.name, "Enrichi SEMrush", `Trafic: ${ov.organicTraffic||0}/mois — Autorité: ${ov.authorityScore||0}`);
-        }
-      } else {
-        setEnrichLog(prev => [{ id:Date.now(), msg:`🧠 ${done}/${Math.min(30,targets.length)} Qualification: ${p.name}` },...prev].slice(0,50));
-        const q = await ai(`${AI_SYS}\n\nQualifie. JSON uniquement:\n{"score":1-100,"priority":"hot|warm|cold","estimated_monthly_volume":"...","lifetime_value":"...","best_channel":"email|phone","approach_strategy":"...","recommended_products":[{"name":"...","reason":"..."}],"talking_points":["..."]}`,
-          `Qualifie: ${p.name} (${p.type}) ${p.city}, ${p.countryName}. ${p.notes||""} ${p.rating?"Note:"+p.rating:""} ${p.email?"Email:"+p.email:""} ${p.siret?"SIRET:"+p.siret:""} ${p.chiffreAffaires?"CA:"+p.chiffreAffaires:""} ${p.organicTraffic?"Trafic web:"+p.organicTraffic+"/mois":""} ${p.authorityScore?"Autorité SEO:"+p.authorityScore:""}`, true);
-        if (q) {
-          setProspects(prev => prev.map(x => x.id === p.id ? { ...x, qualification: q, score: q.score } : x));
-          addActivity(p.id, p.name, "Qualification IA", `Score: ${q.score} — ${q.priority}`);
-        }
+    enrichRef.current.running[type] = true;
+    setEnrichActive(prev => ({...prev, [type]: true}));
+    setEnrichLog(prev => [{ id:Date.now(), msg:`▶ Démarrage ${type} en mode continu...` },...prev].slice(0,80));
+    
+    let totalDone = 0, batch = 0;
+    
+    while (enrichRef.current.running[type]) {
+      batch++;
+      const targets = type === "noemail" ? prospects.filter(p => !p.email && p.website) :
+        type === "nocompany" ? prospects.filter(p => !p.pappersData && !p.siret && p.country === "FR") :
+        type === "semrush" ? prospects.filter(p => !p.semrushData && p.website) :
+        prospects.filter(p => !p.qualification);
+      
+      if (targets.length === 0) {
+        setEnrichLog(prev => [{ id:Date.now(), msg:`✅ ${type} TERMINÉ ! ${totalDone} traités — plus rien` },...prev].slice(0,80));
+        break;
       }
-      await new Promise(r => setTimeout(r, 100));
+      
+      setEnrichLog(prev => [{ id:Date.now(), msg:`📦 ${type} lot ${batch} — ${targets.length} restants...` },...prev].slice(0,80));
+      
+      for (const p of targets.slice(0, 25)) {
+        if (!enrichRef.current.running[type]) break;
+        totalDone++;
+        
+        if (type === "noemail") {
+          setEnrichLog(prev => [{ id:Date.now(), msg:`📧 ${totalDone} Email: ${p.name}` },...prev].slice(0,80));
+          const emailData = await enrichEmail(p);
+          if (emailData?.emails?.[0]) {
+            const bestEmail = emailData.emails.sort((a,b) => b.confidence - a.confidence)[0];
+            setProspects(prev => prev.map(x => x.id === p.id ? { ...x, email: bestEmail.email, emailConfidence: bestEmail.confidence,
+              contactName: `${bestEmail.firstName} ${bestEmail.lastName}`.trim(), contactPosition: bestEmail.position || '' } : x));
+          }
+        } else if (type === "nocompany") {
+          setEnrichLog(prev => [{ id:Date.now(), msg:`🏢 ${totalDone} Pappers: ${p.name}` },...prev].slice(0,80));
+          const company = await enrichPappers(p);
+          if (company) {
+            setProspects(prev => prev.map(x => x.id === p.id ? { ...x, pappersData: company,
+              siret: company.siret||'', dirigeant: company.dirigeant||'', effectif: company.effectif||'',
+              chiffreAffaires: company.chiffreAffaires||'', codeNAF: company.codeNAF||'', activite: company.activite||'' } : x));
+          }
+        } else if (type === "semrush") {
+          setEnrichLog(prev => [{ id:Date.now(), msg:`📊 ${totalDone} SEMrush: ${p.name}` },...prev].slice(0,80));
+          const sem = await enrichSemrush(p);
+          if (sem) {
+            const ov = sem.overview || {};
+            const trafficBoost = Math.min(30, Math.round(Math.log10(Math.max(1, ov.organicTraffic)) * 8));
+            setProspects(prev => prev.map(x => x.id === p.id ? { ...x, semrushData: sem,
+              organicTraffic: ov.organicTraffic||0, organicKeywords: ov.organicKeywords||0,
+              authorityScore: ov.authorityScore||0, paidTraffic: ov.paidTraffic||0, paidCost: ov.paidCost||0,
+              topKeywords: sem.topKeywords||[], trafficTrend: sem.trafficHistory||[], semCompetitors: sem.competitors||[],
+              score: Math.min(99, (p.score||50) + trafficBoost) } : x));
+          }
+        } else {
+          setEnrichLog(prev => [{ id:Date.now(), msg:`🧠 ${totalDone} Qualification: ${p.name}` },...prev].slice(0,80));
+          const q = await ai(`${AI_SYS}\n\nQualifie. JSON uniquement:\n{"score":1-100,"priority":"hot|warm|cold","estimated_monthly_volume":"...","lifetime_value":"...","best_channel":"email|phone","approach_strategy":"...","recommended_products":[{"name":"...","reason":"..."}],"talking_points":["..."]}`,
+            `Qualifie: ${p.name} (${p.type}) ${p.city}, ${p.countryName}. ${p.notes||""} ${p.rating?"Note:"+p.rating:""} ${p.email?"Email:"+p.email:""} ${p.siret?"SIRET:"+p.siret:""} ${p.chiffreAffaires?"CA:"+p.chiffreAffaires:""} ${p.organicTraffic?"Trafic web:"+p.organicTraffic+"/mois":""} ${p.authorityScore?"Autorité SEO:"+p.authorityScore:""}`, true);
+          if (q) {
+            setProspects(prev => prev.map(x => x.id === p.id ? { ...x, qualification: q, score: q.score } : x));
+          }
+        }
+        await new Promise(r => setTimeout(r, 150));
+      }
+      
+      // Sync after each batch
+      if (supaOk) { try { await syncToSupabase(prospects, activities, quotes); } catch {} }
+      setEnrichLog(prev => [{ id:Date.now(), msg:`☁️ Sync (${totalDone} traités)` },...prev].slice(0,80));
+      await new Promise(r => setTimeout(r, 2000));
     }
-    if (enrichRef.current.running) setEnrichLog(prev => [{ id:Date.now(), msg:`🏁 Terminé ! ${done} prospects enrichis` },...prev]);
-    enrichRef.current.running = false;
-    setEnrichRunning(false);
+    
+    if (!enrichRef.current.running[type]) {
+      setEnrichLog(prev => [{ id:Date.now(), msg:`⏹ ${type} arrêté après ${totalDone}` },...prev]);
+    }
+    enrichRef.current.running[type] = false;
+    setEnrichActive(prev => ({...prev, [type]: false}));
   };
 
   // ─── DUPLICATE DETECTION ──────────────────────────────────────────────────
@@ -1448,7 +1493,7 @@ export default function GeosisteCRM() {
                   {allTags.map(t => <option key={t} value={t}>🏷️ {t}</option>)}
                 </select>}
                 <span style={{ marginLeft:"auto",fontSize:11,color:"#64748b",fontFamily:"'Space Mono'" }}>{filtered.length} / {myProspects.length}</span>
-                <button className="B BP" disabled={agentRunning} onClick={() => runEnrichment("qualify")} style={{ fontSize:9,padding:"5px 10px" }}>
+                <button className="B BP" disabled={enrichActive.qualify} onClick={() => runEnrichment("qualify")} style={{ fontSize:9,padding:"5px 10px" }}>
                   {agentRunning ? <Dots/> : `🧠 Qualifier (${filtered.filter(p=>!p.qualification).length})`}
                 </button>
                 <button className="B BS" onClick={() => setShowAddModal(true)} style={{ fontSize:9,padding:"5px 10px" }}>➕</button>
@@ -1833,9 +1878,9 @@ export default function GeosisteCRM() {
                 </div>
                 <div style={{ display:"flex",gap:6,alignItems:"center" }}>
                   <span style={{ fontSize:11,color:"#f59e0b",fontFamily:"'Space Mono'" }}>{myProspects.filter(p=>!p.semrushData&&p.website).length} à enrichir</span>
-                  <button className="B" disabled={enrichRunning} onClick={() => runEnrichment("semrush")}
+                  <button className="B" disabled={enrichActive.semrush} onClick={() => runEnrichment("semrush")}
                     style={{ background:"linear-gradient(135deg,#f59e0b,#f97316)",color:"#fff" }}>
-                    {enrichRunning ? <Dots/> : "⚡ Enrichir SEMrush"}
+                    {enrichActive.semrush ? <Dots/> : "⚡ Enrichir SEMrush"}
                   </button>
                 </div>
               </div>
@@ -2104,8 +2149,8 @@ export default function GeosisteCRM() {
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Hunter.io — Recherche emails</p>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.email&&p.website).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>sans email</div>
-                <button className="B BS" disabled={enrichRunning} onClick={() => runEnrichment("noemail")} style={{ width:"100%" }}>
-                  {enrichRunning ? <Dots/> : "📧 Lancer"}
+                <button className="B BS" disabled={enrichActive.noemail} onClick={() => runEnrichment("noemail")} style={{ width:"100%" }}>
+                  {enrichActive.noemail ? <Dots/> : "📧 Lancer"}
                 </button>
               </div>
               <div className="C" style={{ textAlign:"center" }}>
@@ -2114,8 +2159,8 @@ export default function GeosisteCRM() {
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Pappers — SIRET, CA, dirigeant</p>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.pappersData&&!p.siret&&p.country==="FR").length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>FR sans Pappers</div>
-                <button className="B BP" disabled={enrichRunning} onClick={() => runEnrichment("nocompany")} style={{ width:"100%" }}>
-                  {enrichRunning ? <Dots/> : "🏢 Lancer"}
+                <button className="B BP" disabled={enrichActive.nocompany} onClick={() => runEnrichment("nocompany")} style={{ width:"100%" }}>
+                  {enrichActive.nocompany ? <Dots/> : "🏢 Lancer"}
                 </button>
               </div>
               <div className="C" style={{ textAlign:"center" }}>
@@ -2124,9 +2169,9 @@ export default function GeosisteCRM() {
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Trafic, mots-clés, autorité</p>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.semrushData&&p.website).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>sans SEMrush</div>
-                <button className="B" disabled={enrichRunning} onClick={() => runEnrichment("semrush")}
+                <button className="B" disabled={enrichActive.semrush} onClick={() => runEnrichment("semrush")}
                   style={{ width:"100%",background:"linear-gradient(135deg,#06b6d4,#0891b2)",color:"#fff" }}>
-                  {enrichRunning ? <Dots/> : "📊 Lancer"}
+                  {enrichActive.semrush ? <Dots/> : "📊 Lancer"}
                 </button>
               </div>
               <div className="C" style={{ textAlign:"center" }}>
@@ -2135,9 +2180,9 @@ export default function GeosisteCRM() {
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Score + priorité + stratégie</p>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.qualification).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>non qualifiés</div>
-                <button className="B" disabled={enrichRunning} onClick={() => runEnrichment("qualify")}
+                <button className="B" disabled={enrichActive.qualify} onClick={() => runEnrichment("qualify")}
                   style={{ width:"100%",background:"linear-gradient(135deg,#f59e0b,#f97316)",color:"#fff" }}>
-                  {enrichRunning ? <Dots/> : "🧠 Lancer"}
+                  {enrichActive.qualify ? <Dots/> : "🧠 Lancer"}
                 </button>
               </div>
             </div>
@@ -2164,7 +2209,7 @@ export default function GeosisteCRM() {
               <div className="C">
                 <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
                   <h4 style={{ fontSize:12,fontWeight:600,color:"#f1f5f9" }}>Terminal Enrichissement</h4>
-                  {enrichRunning && <button className="B BD" style={{ fontSize:10,padding:"5px 12px" }} onClick={stopEnrichment}>⏹ Arrêter</button>}
+                  {Object.values(enrichActive).some(v=>v) && <button className="B BD" style={{ fontSize:10,padding:"5px 12px" }} onClick={() => stopEnrichment()}>⏹ Arrêter</button>}
                 </div>
                 <div style={{ maxHeight:200,overflowY:"auto",fontFamily:"'Space Mono'",fontSize:10,background:"rgba(0,0,0,.3)",borderRadius:8,padding:10 }}>
                   {enrichLog.map(l => <div key={l.id} style={{ padding:"2px 0",color:"#94a3b8" }}>{l.msg}</div>)}

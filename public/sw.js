@@ -1,4 +1,4 @@
-const CACHE_NAME = 'geosiste-v23';
+const CACHE_NAME = 'geosiste-v24';
 const ASSETS = ['/', '/index.html'];
 
 self.addEventListener('install', (e) => {
@@ -18,7 +18,6 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Network first, fallback to cache
   if (e.request.method !== 'GET') return;
   e.respondWith(
     fetch(e.request)
@@ -30,3 +29,10 @@ self.addEventListener('fetch', (e) => {
       .catch(() => caches.match(e.request))
   );
 });
+
+// Keep alive - ping every 30 seconds to prevent sleep
+setInterval(() => {
+  self.clients.matchAll().then(clients => {
+    clients.forEach(client => client.postMessage({ type: 'keepalive' }));
+  });
+}, 30000);
