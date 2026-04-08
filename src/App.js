@@ -1509,7 +1509,7 @@ export default function GeosisteCRM() {
                 </select>}
                 <span style={{ marginLeft:"auto",fontSize:11,color:"#64748b",fontFamily:"'Space Mono'" }}>{filtered.length} / {myProspects.length}</span>
                 <button className="B BP" disabled={enrichActive.qualify} onClick={() => runEnrichment("qualify")} style={{ fontSize:9,padding:"5px 10px" }}>
-                  {agentRunning ? <Dots/> : `🧠 Qualifier (${filtered.filter(p=>!p.qualification).length})`}
+                  {enrichActive.qualify ? <Dots/> : `🧠 Qualifier (${filtered.filter(p=>!p.qualification).length})`}
                 </button>
                 <button className="B BS" onClick={() => setShowAddModal(true)} style={{ fontSize:9,padding:"5px 10px" }}>➕</button>
                 <button className="B BG" onClick={exportCSV} style={{ fontSize:9,padding:"5px 10px" }}>📥 CSV</button>
@@ -1901,6 +1901,126 @@ export default function GeosisteCRM() {
               </div>
             </div>
 
+            {/* Google Custom Search */}
+            <div className="C" style={{ marginBottom:16,border:"1px solid rgba(16,185,129,.15)" }}>
+              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6 }}>
+                <div>
+                  <h4 style={{ fontSize:12,fontWeight:600,color:"#10b981" }}>🔎 Google Search — Découverte Web CBD</h4>
+                  <p style={{ fontSize:9,color:"#64748b",margin:0 }}>Recherche Google "CBD shop" dans chaque pays — trouve des boutiques non référencées sur Maps</p>
+                </div>
+                <button className="B BS" disabled={agentRunning} onClick={async () => {
+                  agentRef.current.running = true; setAgentRunning(true); setAgentLog([]);
+                  const queries = [
+                    {q:"CBD shop boutique",countries:["FR","BE","CH","LU"]},
+                    {q:"CBD store buy",countries:["DE","AT","NL","GB","IE"]},
+                    {q:"tienda CBD",countries:["ES","PT"]},
+                    {q:"negozio CBD",countries:["IT"]},
+                    {q:"CBD sklep",countries:["PL","CZ"]},
+                    {q:"CBD butik",countries:["DK","SE"]},
+                    {q:"CBD Griechenland kaufen",countries:["GR","HR"]},
+                  ];
+                  for (const {q, countries} of queries) {
+                    for (const cc of countries) {
+                      if (!agentRef.current.running) break;
+                      const c = COUNTRIES.find(x=>x.code===cc);
+                      setAgentLog(prev=>[{id:Date.now(),msg:`🔎 Google: "${q}" ${c?.flag} ${c?.name}...`},...prev].slice(0,100));
+                      try {
+                        const r = await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,country:cc})});
+                        if (r.ok) {
+                          const d = await r.json();
+                          if (d.results?.length > 0) {
+                            addNewProspects(d.results.map(x=>({name:x.name||'',website:x.website||'',phone:x.phone||'',score:40})),cc,c?.name||'',c?.flag||'','google_search');
+                            setAgentLog(prev=>[{id:Date.now(),msg:`✅ +${d.results.length} via Google "${q}" ${c?.flag}`},...prev].slice(0,100));
+                          }
+                        }
+                      } catch {}
+                      await new Promise(r=>setTimeout(r,1000));
+                    }
+                  }
+                  agentRef.current.running=false; setAgentRunning(false);
+                  setAgentLog(prev=>[{id:Date.now(),msg:"🏁 Google Search terminé !"},...prev]);
+                }}>🔎 Scanner Google</button>
+              </div>
+            </div>
+
+            {/* Instagram CBD Discovery */}
+            <div className="C" style={{ marginBottom:16,border:"1px solid rgba(236,72,153,.15)" }}>
+              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6 }}>
+                <div>
+                  <h4 style={{ fontSize:12,fontWeight:600,color:"#ec4899" }}>📸 Instagram — CBD Shops & Influenceurs</h4>
+                  <p style={{ fontSize:9,color:"#64748b",margin:0 }}>Trouve des boutiques CBD via les profils Instagram (site:instagram.com)</p>
+                </div>
+                <button className="B" disabled={agentRunning} onClick={async () => {
+                  agentRef.current.running = true; setAgentRunning(true); setAgentLog([]);
+                  const hashtags = ["cbd shop france","boutique cbd","cbd store europe","cbd grossiste","cbd wholesale",
+                    "cbd shop deutschland","cbd tienda españa","cbd negozio italia","cbd winkel nederland","cbd shop belgique"];
+                  for (const tag of hashtags) {
+                    if (!agentRef.current.running) break;
+                    setAgentLog(prev=>[{id:Date.now(),msg:`📸 Instagram: "${tag}"...`},...prev].slice(0,100));
+                    try {
+                      const r = await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({query:`site:instagram.com "${tag}"`})});
+                      if (r.ok) {
+                        const d = await r.json();
+                        if (d.results?.length > 0) {
+                          const instaProspects = d.results.filter(x=>x.website?.includes('instagram.com')).map(x=>{
+                            const handle = x.website.split('instagram.com/')[1]?.split('/')[0]?.split('?')[0]||'';
+                            return {name:x.name||handle,instagram:handle,website:'',score:35,source:'instagram_search'};
+                          }).filter(x=>x.name);
+                          if (instaProspects.length > 0) addNewProspects(instaProspects,"FR","France","🇫🇷","instagram");
+                          setAgentLog(prev=>[{id:Date.now(),msg:`✅ +${instaProspects.length} profils Instagram "${tag}"`},...prev].slice(0,100));
+                        }
+                      }
+                    } catch {}
+                    await new Promise(r=>setTimeout(r,1500));
+                  }
+                  agentRef.current.running=false; setAgentRunning(false);
+                  setAgentLog(prev=>[{id:Date.now(),msg:"🏁 Instagram Search terminé !"},...prev]);
+                }} style={{ background:"linear-gradient(135deg,#ec4899,#be185d)",color:"#fff" }}>📸 Scanner Instagram</button>
+              </div>
+            </div>
+
+            {/* Weedmaps / Leafly / Annuaires */}
+            <div className="C" style={{ marginBottom:16,border:"1px solid rgba(34,197,94,.15)" }}>
+              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6 }}>
+                <div>
+                  <h4 style={{ fontSize:12,fontWeight:600,color:"#22c55e" }}>🌿 Annuaires CBD — Weedmaps, Leafly, Cannaweed</h4>
+                  <p style={{ fontSize:9,color:"#64748b",margin:0 }}>Recherche dans les annuaires spécialisés CBD/Cannabis</p>
+                </div>
+                <button className="B" disabled={agentRunning} onClick={async () => {
+                  agentRef.current.running = true; setAgentRunning(true); setAgentLog([]);
+                  const sources = [
+                    {site:"weedmaps.com",label:"Weedmaps"},
+                    {site:"leafly.com",label:"Leafly"},
+                    {site:"cannaweed.com",label:"Cannaweed"},
+                    {site:"newsweed.fr",label:"NewsWeed"},
+                    {site:"cbdcorner.fr",label:"CBD Corner"},
+                  ];
+                  const countries = ["france","germany","spain","italy","netherlands","belgium","switzerland","portugal","austria"];
+                  for (const {site,label} of sources) {
+                    for (const country of countries) {
+                      if (!agentRef.current.running) break;
+                      setAgentLog(prev=>[{id:Date.now(),msg:`🌿 ${label}: CBD ${country}...`},...prev].slice(0,100));
+                      try {
+                        const r = await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},
+                          body:JSON.stringify({query:`site:${site} CBD shop ${country}`})});
+                        if (r.ok) {
+                          const d = await r.json();
+                          if (d.results?.length > 0) {
+                            addNewProspects(d.results.map(x=>({name:x.name||'',website:x.website||'',score:35})),"FR","","","annuaire_"+label.toLowerCase());
+                            setAgentLog(prev=>[{id:Date.now(),msg:`✅ +${d.results.length} via ${label} (${country})`},...prev].slice(0,100));
+                          }
+                        }
+                      } catch {}
+                      await new Promise(r=>setTimeout(r,1200));
+                    }
+                  }
+                  agentRef.current.running=false; setAgentRunning(false);
+                  setAgentLog(prev=>[{id:Date.now(),msg:"🏁 Annuaires CBD terminé !"},...prev]);
+                }} style={{ background:"linear-gradient(135deg,#22c55e,#16a34a)",color:"#fff" }}>🌿 Scanner Annuaires</button>
+              </div>
+            </div>
+
             {/* Agent Log */}
             {agentLog.length > 0 && (
               <div className="C">
@@ -2164,9 +2284,9 @@ export default function GeosisteCRM() {
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Hunter.io — Recherche emails</p>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.email&&p.website).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>sans email</div>
-                <button className="B BS" disabled={enrichActive.noemail} onClick={() => runEnrichment("noemail")} style={{ width:"100%" }}>
-                  {enrichActive.noemail ? <Dots/> : "📧 Lancer"}
-                </button>
+                {enrichActive.noemail
+                  ? <button className="B BD" onClick={() => stopEnrichment("noemail")} style={{ width:"100%" }}>⏹ Arrêter</button>
+                  : <button className="B BS" onClick={() => runEnrichment("noemail")} style={{ width:"100%" }}>📧 Lancer</button>}
               </div>
               <div className="C" style={{ textAlign:"center" }}>
                 <div style={{ fontSize:28,marginBottom:6 }}>🏢</div>
@@ -2174,9 +2294,9 @@ export default function GeosisteCRM() {
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Pappers — SIRET, CA, dirigeant</p>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.pappersData&&!p.siret&&p.country==="FR").length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>FR sans Pappers</div>
-                <button className="B BP" disabled={enrichActive.nocompany} onClick={() => runEnrichment("nocompany")} style={{ width:"100%" }}>
-                  {enrichActive.nocompany ? <Dots/> : "🏢 Lancer"}
-                </button>
+                {enrichActive.nocompany
+                  ? <button className="B BD" onClick={() => stopEnrichment("nocompany")} style={{ width:"100%" }}>⏹ Arrêter</button>
+                  : <button className="B BP" onClick={() => runEnrichment("nocompany")} style={{ width:"100%" }}>🏢 Lancer</button>}
               </div>
               <div className="C" style={{ textAlign:"center" }}>
                 <div style={{ fontSize:28,marginBottom:6 }}>📊</div>
@@ -2184,10 +2304,9 @@ export default function GeosisteCRM() {
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Trafic, mots-clés, autorité</p>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.semrushData&&p.website).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>sans SEMrush</div>
-                <button className="B" disabled={enrichActive.semrush} onClick={() => runEnrichment("semrush")}
-                  style={{ width:"100%",background:"linear-gradient(135deg,#06b6d4,#0891b2)",color:"#fff" }}>
-                  {enrichActive.semrush ? <Dots/> : "📊 Lancer"}
-                </button>
+                {enrichActive.semrush
+                  ? <button className="B BD" onClick={() => stopEnrichment("semrush")} style={{ width:"100%" }}>⏹ Arrêter</button>
+                  : <button className="B" onClick={() => runEnrichment("semrush")} style={{ width:"100%",background:"linear-gradient(135deg,#06b6d4,#0891b2)",color:"#fff" }}>📊 Lancer</button>}
               </div>
               <div className="C" style={{ textAlign:"center" }}>
                 <div style={{ fontSize:28,marginBottom:6 }}>🧠</div>
@@ -2195,10 +2314,9 @@ export default function GeosisteCRM() {
                 <p style={{ fontSize:10,color:"#64748b",marginBottom:10 }}>Score + priorité + stratégie</p>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'",marginBottom:8 }}>{myProspects.filter(p=>!p.qualification).length}</div>
                 <div style={{ fontSize:9,color:"#64748b",marginBottom:10 }}>non qualifiés</div>
-                <button className="B" disabled={enrichActive.qualify} onClick={() => runEnrichment("qualify")}
-                  style={{ width:"100%",background:"linear-gradient(135deg,#f59e0b,#f97316)",color:"#fff" }}>
-                  {enrichActive.qualify ? <Dots/> : "🧠 Lancer"}
-                </button>
+                {enrichActive.qualify
+                  ? <button className="B BD" onClick={() => stopEnrichment("qualify")} style={{ width:"100%" }}>⏹ Arrêter</button>
+                  : <button className="B" onClick={() => runEnrichment("qualify")} style={{ width:"100%",background:"linear-gradient(135deg,#f59e0b,#f97316)",color:"#fff" }}>🧠 Lancer</button>}
               </div>
             </div>
 
@@ -2222,9 +2340,15 @@ export default function GeosisteCRM() {
             {/* Enrichment Log */}
             {enrichLog.length > 0 && (
               <div className="C">
-                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:4 }}>
                   <h4 style={{ fontSize:12,fontWeight:600,color:"#f1f5f9" }}>Terminal Enrichissement</h4>
-                  {Object.values(enrichActive).some(v=>v) && <button className="B BD" style={{ fontSize:10,padding:"5px 12px" }} onClick={() => stopEnrichment()}>⏹ Arrêter</button>}
+                  <div style={{ display:"flex",gap:4 }}>
+                    {enrichActive.noemail && <button className="B BD" style={{ fontSize:9,padding:"3px 8px" }} onClick={() => stopEnrichment("noemail")}>⏹ Email</button>}
+                    {enrichActive.nocompany && <button className="B BD" style={{ fontSize:9,padding:"3px 8px" }} onClick={() => stopEnrichment("nocompany")}>⏹ Pappers</button>}
+                    {enrichActive.semrush && <button className="B BD" style={{ fontSize:9,padding:"3px 8px" }} onClick={() => stopEnrichment("semrush")}>⏹ SEMrush</button>}
+                    {enrichActive.qualify && <button className="B BD" style={{ fontSize:9,padding:"3px 8px" }} onClick={() => stopEnrichment("qualify")}>⏹ IA</button>}
+                    {Object.values(enrichActive).filter(v=>v).length > 1 && <button className="B BD" style={{ fontSize:9,padding:"3px 8px" }} onClick={() => stopEnrichment()}>⏹ Tout</button>}
+                  </div>
                 </div>
                 <div style={{ maxHeight:200,overflowY:"auto",fontFamily:"'Space Mono'",fontSize:10,background:"rgba(0,0,0,.3)",borderRadius:8,padding:10 }}>
                   {enrichLog.map(l => <div key={l.id} style={{ padding:"2px 0",color:"#94a3b8" }}>{l.msg}</div>)}
