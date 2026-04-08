@@ -403,7 +403,8 @@ export default function GeosisteCRM() {
   // Keep prospectsRef in sync for async closures
   useEffect(() => { prospectsRef.current = prospects; }, [prospects]);
   
-  // Helper: update prospects in both state AND ref (for async loops)
+  // Helper: format user object for Supabase columns
+  const userToSupa = (u) => ({ id:u.id, name:u.name, email:u.email, password:u.password, role:u.role||"employee", permissions:u.permissions||{}, created_at:u.createdAt||u.created_at||new Date().toISOString() });
   const updateProspect = (id, changes) => {
     setProspects(prev => {
       const updated = prev.map(x => x.id === id ? { ...x, ...changes } : x);
@@ -463,7 +464,7 @@ export default function GeosisteCRM() {
   useEffect(() => {
     LS.set("crm_users", users);
     if (supaOk && users.length > 0) {
-      users.forEach(u => supa.upsert("crm_users", u));
+      users.forEach(u => supa.upsert("crm_users", userToSupa(u)));
     }
   }, [users]);
 
@@ -485,7 +486,8 @@ export default function GeosisteCRM() {
     const defaultPerms = {}; PERM_LIST.forEach(p => { defaultPerms[p.key] = true; });
     const newUser = { id: `u${Date.now()}`, name: loginForm.name, email: loginForm.email, password: loginForm.password, role: "employee", permissions: defaultPerms, createdAt: new Date().toISOString() };
     setUsers(prev => [...prev, newUser]);
-    supa.upsert("crm_users", newUser);
+    // Sync to Supabase with correct column names
+    supa.upsert("crm_users", userToSupa(newUser));
     setUser(newUser); LS.set("crm_user", newUser); setAuthError("");
   };
 
@@ -495,7 +497,7 @@ export default function GeosisteCRM() {
     const newPwd = prompt("Nouveau mot de passe :");
     if (!newPwd || newPwd.length < 3) { setAuthError("Mot de passe trop court"); return; }
     setUsers(prev => prev.map(u => u.email === loginForm.email ? { ...u, password: newPwd } : u));
-    supa.upsert("crm_users", { ...found, password: newPwd });
+    supa.upsert("crm_users", userToSupa({ ...found, password: newPwd }));
     setAuthError(""); setResetMode(false);
     alert("Mot de passe modifié ! Vous pouvez vous connecter.");
   };
@@ -1417,7 +1419,7 @@ export default function GeosisteCRM() {
                         setMigrating(true);
                         try {
                           // Sync users
-                          for (const u of users) { await supa.upsert("crm_users", u); }
+                          for (const u of users) { await supa.upsert("crm_users", userToSupa(u)); }
                           // Sync all prospects
                           const rows = prospects.map(p => ({ id: p.id, data: p, created_at: p.addedAt || new Date().toISOString(), updated_at: p.lastUpdate || new Date().toISOString() }));
                           await supa.upsertMany("crm_prospects", rows);
@@ -2112,7 +2114,7 @@ export default function GeosisteCRM() {
                     PERM_LIST.forEach(p => { defaultPerms[p.key] = true; });
                     const newU = { id:`u${Date.now()}`, name, email, password:pwd, role:"employee", permissions:defaultPerms, createdAt:new Date().toISOString() };
                     setUsers(prev => [...prev, newU]);
-                    if (supaOk) supa.upsert("crm_users", newU);
+                    if (supaOk) supa.upsert("crm_users", userToSupa(newU));
                     addActivity("system","Admin","Employé ajouté",`${name} (${email})`);
                   }}>➕ Ajouter un employé</button>
                 </div>
@@ -2158,7 +2160,7 @@ export default function GeosisteCRM() {
                                 onClick={() => {
                                   const newPerms = { ...permObj, [pm.key]: !enabled };
                                   setUsers(prev => prev.map(x => x.id===u.id ? {...x, permissions:newPerms} : x));
-                                  if (supaOk) supa.upsert("crm_users", {...u, permissions:newPerms});
+                                  if (supaOk) supa.upsert("crm_users", userToSupa({...u, permissions:newPerms}));
                                 }}>
                                 {enabled?"✓":"✗"} {pm.label.slice(2)}
                               </button>
