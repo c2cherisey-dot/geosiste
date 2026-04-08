@@ -299,10 +299,16 @@ export default function GeosisteCRM() {
           supa.getAll("crm_activities"), supa.getAll("crm_quotes"),
         ]);
         
-        // Users
+        // Users — map Supabase columns to app format
         if (supaUsers?.length > 0) {
-          setUsers(supaUsers);
-          LS.set("crm_users", supaUsers);
+          const mapped = supaUsers.map(u => ({
+            id: u.id, name: u.name, email: u.email, password: u.password,
+            role: u.role || "employee",
+            permissions: u.permissions || {},
+            createdAt: u.created_at || u.createdAt || new Date().toISOString(),
+          }));
+          setUsers(mapped);
+          LS.set("crm_users", mapped);
         } else {
           setUsers(LS.get("crm_users") || [{ id:"admin1",name:"Carl",email:"admin@chanvrier.com",password:"admin",role:"admin",createdAt:new Date().toISOString() }]);
         }
