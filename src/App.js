@@ -1916,17 +1916,19 @@ export default function GeosisteCRM() {
                   const uProspects = prospects.filter(p => p.assignedTo === u.id);
                   const uActivities = activities.filter(a => a.userId === u.id);
                   const uWon = uProspects.filter(p => p.stage === "won").length;
+                  const permObj = typeof u.permissions === "object" && u.permissions ? u.permissions : {};
+                  const permCount = Object.values(permObj).filter(v => v !== false).length;
                   return (
-                    <div key={u.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,.03)" }}>
+                    <div key={u.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,.03)",flexWrap:"wrap" }}>
                       <div style={{ width:36,height:36,borderRadius:9,background:u.role==="admin"?"linear-gradient(135deg,#f59e0b,#f97316)":"linear-gradient(135deg,#6366f1,#8b5cf6)",
-                        display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:700 }}>{u.name[0]}</div>
-                      <div style={{ flex:1 }}>
+                        display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:700 }}>{(u.name||"?")[0]}</div>
+                      <div style={{ flex:1,minWidth:120 }}>
                         <div style={{ fontSize:13,fontWeight:600,color:"#e2e8f0" }}>
-                          {u.name}
+                          {u.name || "Sans nom"}
                           {u.role==="admin" && <span className="T" style={{ background:"rgba(245,158,11,.15)",color:"#fbbf24",marginLeft:6 }}>Admin</span>}
-                          <span className="T" style={{ background:"rgba(99,102,241,.1)",color:"#a5b4fc",marginLeft:4,fontSize:8 }}>{u.permissions||"all"}</span>
+                          {u.role!=="admin" && <span className="T" style={{ background:"rgba(99,102,241,.1)",color:"#a5b4fc",marginLeft:4,fontSize:8 }}>{permCount}/{PERM_LIST.length} perms</span>}
                         </div>
-                        <div style={{ fontSize:10,color:"#64748b" }}>{u.email} — {new Date(u.createdAt).toLocaleDateString("fr-FR")}</div>
+                        <div style={{ fontSize:10,color:"#64748b" }}>{u.email || ""} — {u.createdAt ? new Date(u.createdAt).toLocaleDateString("fr-FR") : "N/A"}</div>
                       </div>
                       <div style={{ textAlign:"center",padding:"0 8px" }}>
                         <div style={{ fontSize:16,fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{uProspects.length}</div>
@@ -1944,14 +1946,13 @@ export default function GeosisteCRM() {
                       {u.role !== "admin" && (
                         <div style={{ display:"flex",gap:3,flexWrap:"wrap" }}>
                           {PERM_LIST.slice(0,6).map(pm => {
-                            const perms = u.permissions || {};
-                            const enabled = perms[pm.key] !== false;
+                            const enabled = permObj[pm.key] !== false;
                             return (
                               <button key={pm.key} className="T" style={{ cursor:"pointer",fontSize:7,border:"none",
                                 background:enabled?"rgba(16,185,129,.12)":"rgba(239,68,68,.12)",
                                 color:enabled?"#10b981":"#ef4444" }}
                                 onClick={() => {
-                                  const newPerms = { ...(u.permissions||{}), [pm.key]: !enabled };
+                                  const newPerms = { ...permObj, [pm.key]: !enabled };
                                   setUsers(prev => prev.map(x => x.id===u.id ? {...x, permissions:newPerms} : x));
                                   if (supaOk) supa.upsert("crm_users", {...u, permissions:newPerms});
                                 }}>
@@ -1986,19 +1987,19 @@ export default function GeosisteCRM() {
                   const uWon = up.filter(p => p.stage === "won").length;
                   const uContacted = up.filter(p => p.stage !== "new").length;
                   const uQuotes = quotes.filter(q => q.userId === u.id);
-                  const uCA = uQuotes.reduce((a, q) => a + q.total, 0);
-                  const uThisWeek = uActs.filter(a => new Date(a.date) > new Date(Date.now() - 7*24*60*60*1000)).length;
+                  const uCA = uQuotes.reduce((a, q) => a + (q.total||0), 0);
+                  const uThisWeek = uActs.filter(a => a.date && new Date(a.date) > new Date(Date.now() - 7*24*60*60*1000)).length;
                   const totalScore = uContacted * 2 + uWon * 20 + uCA / 100 + uThisWeek;
                   return { ...u, up, uWon, uContacted, uQuotes, uCA, uThisWeek, totalScore };
                 }).sort((a,b) => b.totalScore - a.totalScore).map((u, i) => (
-                  <div key={u.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:"1px solid rgba(255,255,255,.03)" }}>
+                  <div key={u.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:"1px solid rgba(255,255,255,.03)",flexWrap:"wrap" }}>
                     <div style={{ fontSize:20,fontWeight:800,color:i===0?"#fbbf24":i===1?"#94a3b8":i===2?"#cd7f32":"#475569",fontFamily:"'Space Mono'",width:30,textAlign:"center" }}>
                       {i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}
                     </div>
                     <div style={{ width:36,height:36,borderRadius:9,background:u.role==="admin"?"linear-gradient(135deg,#f59e0b,#f97316)":"linear-gradient(135deg,#6366f1,#8b5cf6)",
-                      display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:700 }}>{u.name[0]}</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13,fontWeight:600,color:"#e2e8f0" }}>{u.name}</div>
+                      display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:700 }}>{(u.name||"?")[0]}</div>
+                    <div style={{ flex:1,minWidth:100 }}>
+                      <div style={{ fontSize:13,fontWeight:600,color:"#e2e8f0" }}>{u.name||"Sans nom"}</div>
                       <div style={{ fontSize:9,color:"#64748b" }}>{u.uThisWeek} actions cette semaine</div>
                     </div>
                     <div style={{ display:"flex",gap:16 }}>
