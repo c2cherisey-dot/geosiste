@@ -1189,7 +1189,8 @@ export default function GeosisteCRM() {
       <div style={{ background:"rgba(10,12,20,.85)", border:"1px solid rgba(255,255,255,.05)", borderRadius:24, padding:40, width:"90%", maxWidth:400,
         backdropFilter:"blur(24px)", boxShadow:"0 24px 64px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04)" }}>
         <div style={{ textAlign:"center", marginBottom:32 }}>
-          <div style={{ width:60,height:60,borderRadius:16,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,margin:"0 auto 14px",boxShadow:"0 8px 32px rgba(99,102,241,.3)" }}>⚡</div>
+          <div style={{ width:80,height:80,borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px" }}>
+            <img src="/logo-ldc-white.png" alt="LDC" style={{ width:80,height:80,objectFit:"contain",filter:"drop-shadow(0 4px 16px rgba(99,102,241,.4))" }}/></div>
           <h1 style={{ fontSize:24,fontWeight:800,color:"#f8fafc",margin:0,letterSpacing:"-.02em" }}>Geosiste CRM</h1>
           <p style={{ fontSize:10,color:"rgba(139,92,246,.6)",margin:"6px 0 0",fontFamily:"'Space Mono'",letterSpacing:".14em",textTransform:"uppercase" }}>L'Entrepôt du Chanvrier</p>
         </div>
@@ -1258,18 +1259,15 @@ export default function GeosisteCRM() {
             </button>
           </>
         )}
-        <p style={{ fontSize:10,color:"#475569",textAlign:"center",marginTop:16 }}>
-          Admin par défaut : admin@chanvrier.com / admin
-        </p>
         <button onClick={() => {
-          if (window.confirm("Vider le cache Geosiste ?\n\nCela supprimera les données locales (prospects, activités, devis) stockées dans ce navigateur.\n\nLes données dans Supabase (cloud) ne seront PAS supprimées.")) {
+          if (window.confirm("Vider le cache Geosiste ?\n\nCela supprimera les données locales stockées dans ce navigateur.\nLes données cloud (Supabase) ne seront PAS supprimées.")) {
             ["crm_prospects","crm_activities","crm_quotes","crm_users","crm_user","crm_remember","crm_saved_email"].forEach(k => localStorage.removeItem(k));
             if ('caches' in window) caches.keys().then(names => names.forEach(n => caches.delete(n)));
             alert("Cache vidé ! La page va se recharger.");
             window.location.reload();
           }
-        }} style={{ width:"100%",padding:"8px",marginTop:12,background:"none",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,cursor:"pointer",fontSize:10,color:"#64748b",fontFamily:"inherit" }}>
-          🗑️ Vider le cache Geosiste
+        }} style={{ width:"100%",padding:"10px",marginTop:16,background:"none",border:"1px solid rgba(239,68,68,.2)",borderRadius:10,cursor:"pointer",fontSize:11,color:"#ef4444",fontFamily:"inherit" }}>
+          🗑️ Vider le cache local
         </button>
       </div>
     </div>
@@ -1320,7 +1318,8 @@ export default function GeosisteCRM() {
       <header style={{ background:"rgba(5,6,11,.85)",backdropFilter:"blur(32px) saturate(1.3)",borderBottom:"1px solid rgba(255,255,255,.04)",position:"sticky",top:0,zIndex:100 }}>
         <div style={{ maxWidth:1500,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56,padding:"0 20px" }}>
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <div style={{ width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:"0 2px 12px rgba(99,102,241,.3)" }}>⚡</div>
+            <div style={{ width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center" }}>
+              <img src="/logo-ldc-white.png" alt="LDC" style={{ width:34,height:34,objectFit:"contain" }}/></div>
             <div>
               <div style={{ fontSize:14,fontWeight:700,color:"#f8fafc",letterSpacing:"-.01em" }}>Geosiste CRM</div>
               <div style={{ fontSize:8,color:"rgba(139,92,246,.7)",fontFamily:"'Space Mono'",letterSpacing:".12em",textTransform:"uppercase" }}>L'Entrepôt du Chanvrier</div>
