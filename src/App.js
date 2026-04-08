@@ -247,9 +247,11 @@ export default function GeosisteCRM() {
   // ─── AUTH STATE ───────────────────────────────────────────────────────────
   const [user, setUser] = useState(null); // { id, name, email, role: 'admin'|'employee' }
   const [users, setUsers] = useState([]); // all users (admin sees all)
-  const [loginForm, setLoginForm] = useState({ email: "", password: "", name: "" });
-  const [authMode, setAuthMode] = useState("login"); // login | register
+  const [loginForm, setLoginForm] = useState({ email: LS.get("crm_saved_email") || "", password: "", name: "" });
+  const [authMode, setAuthMode] = useState("login");
   const [authError, setAuthError] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
+  const [rememberMe, setRememberMe] = useState(LS.get("crm_remember") || false);
 
   // ─── CRM STATE ────────────────────────────────────────────────────────────
   const [view, setView] = useState("dashboard");
@@ -372,30 +374,73 @@ export default function GeosisteCRM() {
     }
   }, [supaOk]);
 
+  const [lastSync, setLastSync] = useState(null);
+
+  // Auto-save ALL changes to Supabase every 5 seconds
   useEffect(() => {
     if (!user) return;
     LS.set("crm_prospects", prospects);
-    // Debounced Supabase sync (5 seconds after last change)
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { syncToSupabase(prospects, activities, quotes); }, 5000);
+    saveTimer.current = setTimeout(async () => {
+      await syncToSupabase(prospects, activities, quotes);
+      setLastSync(new Date());
+    }, 5000);
   }, [prospects]);
-  useEffect(() => { if (user) { LS.set("crm_activities", activities); } }, [activities]);
-  useEffect(() => { if (user) { LS.set("crm_quotes", quotes); } }, [quotes]);
-  useEffect(() => { LS.set("crm_users", users); }, [users]);
+  useEffect(() => {
+    if (!user) return;
+    LS.set("crm_activities", activities);
+    // Also sync activities to Supabase
+    if (supaOk && activities.length > 0) {
+      const rows = activities.slice(0, 500).map(a => ({ id: a.id, data: a, created_at: a.date || new Date().toISOString() }));
+      supa.upsertMany("crm_activities", rows);
+    }
+  }, [activities]);
+  useEffect(() => {
+    if (!user) return;
+    LS.set("crm_quotes", quotes);
+    if (supaOk && quotes.length > 0) {
+      const rows = quotes.map(q => ({ id: q.id, data: q, created_at: q.date || new Date().toISOString() }));
+      supa.upsertMany("crm_quotes", rows);
+    }
+  }, [quotes]);
+  useEffect(() => {
+    LS.set("crm_users", users);
+    if (supaOk && users.length > 0) {
+      users.forEach(u => supa.upsert("crm_users", u));
+    }
+  }, [users]);
 
   // ─── AUTH FUNCTIONS ───────────────────────────────────────────────────────
+  const [resetMode, setResetMode] = useState(false);
+
   const doLogin = () => {
     const found = users.find(u => u.email === loginForm.email && u.password === loginForm.password);
     if (!found) { setAuthError("Email ou mot de passe incorrect"); return; }
-    setUser(found); LS.set("crm_user", found); setAuthError("");
+    setUser(found); LS.set("crm_user", found);
+    if (rememberMe) { LS.set("crm_remember", true); LS.set("crm_saved_email", loginForm.email); }
+    else { LS.del("crm_remember"); LS.del("crm_saved_email"); }
+    setAuthError("");
   };
 
   const doRegister = () => {
     if (!loginForm.name || !loginForm.email || !loginForm.password) { setAuthError("Remplissez tous les champs"); return; }
     if (users.find(u => u.email === loginForm.email)) { setAuthError("Cet email existe déjà"); return; }
-    const newUser = { id: `u${Date.now()}`, name: loginForm.name, email: loginForm.email, password: loginForm.password, role: "employee", createdAt: new Date().toISOString() };
+    const defaultPerms = {}; PERM_LIST.forEach(p => { defaultPerms[p.key] = true; });
+    const newUser = { id: `u${Date.now()}`, name: loginForm.name, email: loginForm.email, password: loginForm.password, role: "employee", permissions: defaultPerms, createdAt: new Date().toISOString() };
     setUsers(prev => [...prev, newUser]);
+    supa.upsert("crm_users", newUser);
     setUser(newUser); LS.set("crm_user", newUser); setAuthError("");
+  };
+
+  const doResetPassword = () => {
+    const found = users.find(u => u.email === loginForm.email);
+    if (!found) { setAuthError("Email non trouvé"); return; }
+    const newPwd = prompt("Nouveau mot de passe :");
+    if (!newPwd || newPwd.length < 3) { setAuthError("Mot de passe trop court"); return; }
+    setUsers(prev => prev.map(u => u.email === loginForm.email ? { ...u, password: newPwd } : u));
+    supa.upsert("crm_users", { ...found, password: newPwd });
+    setAuthError(""); setResetMode(false);
+    alert("Mot de passe modifié ! Vous pouvez vous connecter.");
   };
 
   const doLogout = () => { setUser(null); LS.del("crm_user"); setView("dashboard"); };
@@ -1089,18 +1134,49 @@ export default function GeosisteCRM() {
             value={loginForm.email} onChange={e => setLoginForm(p=>({...p,email:e.target.value}))} placeholder="email@exemple.com"
             onKeyDown={e => e.key === "Enter" && (authMode === "login" ? doLogin() : doRegister())}/>
         </div>
-        <div style={{ marginBottom:18 }}>
+        <div style={{ marginBottom:14 }}>
           <label style={{ fontSize:10,color:"#64748b",display:"block",marginBottom:4 }}>Mot de passe</label>
-          <input type="password" style={{ width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)",color:"#e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box",transition:"border .2s" }}
-            value={loginForm.password} onChange={e => setLoginForm(p=>({...p,password:e.target.value}))} placeholder="••••••"
-            onKeyDown={e => e.key === "Enter" && (authMode === "login" ? doLogin() : doRegister())}/>
+          <div style={{ position:"relative" }}>
+            <input type={showPwd?"text":"password"} style={{ width:"100%",padding:"11px 40px 11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)",color:"#e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box",transition:"border .2s" }}
+              value={loginForm.password} onChange={e => setLoginForm(p=>({...p,password:e.target.value}))} placeholder="••••••"
+              onKeyDown={e => e.key === "Enter" && (authMode === "login" ? doLogin() : doRegister())}/>
+            <button onClick={() => setShowPwd(p=>!p)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#64748b",padding:0 }}>
+              {showPwd ? "🙈" : "👁️"}
+            </button>
+          </div>
         </div>
+        {authMode === "login" && (
+          <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:16 }}>
+            <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} style={{ accentColor:"#6366f1" }}/>
+            <label style={{ fontSize:11,color:"#64748b",cursor:"pointer" }} onClick={() => setRememberMe(p=>!p)}>Se souvenir de moi</label>
+          </div>
+        )}
         {authError && <div style={{ fontSize:11,color:"#ef4444",marginBottom:14,textAlign:"center" }}>{authError}</div>}
-        <button onClick={authMode === "login" ? doLogin : doRegister}
-          style={{ width:"100%",padding:"13px",borderRadius:12,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,fontFamily:"inherit",
-            background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",boxShadow:"0 4px 20px rgba(99,102,241,.3)",transition:"all .2s" }}>
-          {authMode === "login" ? "Se connecter" : "Créer mon compte"}
-        </button>
+        {!resetMode ? (
+          <>
+            <button onClick={authMode === "login" ? doLogin : doRegister}
+              style={{ width:"100%",padding:"13px",borderRadius:12,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,fontFamily:"inherit",
+                background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",boxShadow:"0 4px 20px rgba(99,102,241,.3)",transition:"all .2s" }}>
+              {authMode === "login" ? "Se connecter" : "Créer mon compte"}
+            </button>
+            {authMode === "login" && (
+              <button onClick={() => setResetMode(true)} style={{ width:"100%",padding:"8px",marginTop:8,background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#6366f1",fontFamily:"inherit" }}>
+                Mot de passe oublié ?
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button onClick={doResetPassword}
+              style={{ width:"100%",padding:"13px",borderRadius:12,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,fontFamily:"inherit",
+                background:"linear-gradient(135deg,#f59e0b,#f97316)",color:"#fff",transition:"all .2s" }}>
+              Réinitialiser le mot de passe
+            </button>
+            <button onClick={() => setResetMode(false)} style={{ width:"100%",padding:"8px",marginTop:8,background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#64748b",fontFamily:"inherit" }}>
+              ← Retour à la connexion
+            </button>
+          </>
+        )}
         <p style={{ fontSize:10,color:"#475569",textAlign:"center",marginTop:16 }}>
           Admin par défaut : admin@chanvrier.com / admin
         </p>
@@ -1186,6 +1262,10 @@ export default function GeosisteCRM() {
             {agentRunning && <span style={{ display:"flex",alignItems:"center",gap:4,fontSize:9,color:"#10b981",fontFamily:"'Space Mono'" }}>
               <span style={{ width:6,height:6,borderRadius:"50%",background:"#10b981",animation:"pulse 1s infinite" }}/>SCAN
             </span>}
+            {supaOk && <span style={{ display:"flex",alignItems:"center",gap:3,fontSize:8,color:"#10b981" }} title={lastSync ? `Dernière sync: ${lastSync.toLocaleTimeString("fr-FR")}` : "Connecté"}>
+              <span style={{ width:5,height:5,borderRadius:"50%",background:"#10b981" }}/>☁️
+            </span>}
+            {!supaOk && <span style={{ fontSize:8,color:"#ef4444" }} title="Supabase déconnecté">⚠️</span>}
             <span style={{ fontSize:11,color:"#94a3b8" }}>👤 {user.name}</span>
             {isAdmin && <span className="T" style={{ background:"rgba(245,158,11,.15)",color:"#fbbf24" }}>Admin</span>}
             <button className="B BG" onClick={doLogout} style={{ padding:"5px 10px",fontSize:10 }}>Déconnexion</button>
