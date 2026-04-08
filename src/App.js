@@ -1889,7 +1889,7 @@ export default function GeosisteCRM() {
             {adminTab === "team" && (
               <div className="C">
                 <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
-                  <h3 style={{ fontSize:14,fontWeight:700,color:"#f1f5f9" }}>👥 Gestion de l'Équipe</h3>
+                  <h3 style={{ fontSize:14,fontWeight:700,color:"#f1f5f9" }}>👥 Gestion de l'Équipe ({users.length} membres)</h3>
                   <button className="B BP" style={{ fontSize:10 }} onClick={() => {
                     const name = prompt("Nom de l'employé:");
                     if (!name) return;
@@ -1906,7 +1906,7 @@ export default function GeosisteCRM() {
                     addActivity("system","Admin","Employé ajouté",`${name} (${email})`);
                   }}>➕ Ajouter un employé</button>
                 </div>
-                {users.map(u => {
+                {users.filter(u => u && u.name && u.id).map(u => {
                   const uProspects = prospects.filter(p => p.assignedTo === u.id);
                   const uActivities = activities.filter(a => a.userId === u.id);
                   const uWon = uProspects.filter(p => p.stage === "won").length;
@@ -1974,7 +1974,7 @@ export default function GeosisteCRM() {
             {adminTab === "leaderboard" && (
               <div className="C">
                 <h3 style={{ fontSize:14,fontWeight:700,color:"#f1f5f9",marginBottom:16 }}>🏅 Leaderboard — Performance Équipe</h3>
-                {users.map((u, rank) => {
+                {users.filter(u => u && u.name && u.id).map((u, rank) => {
                   const up = prospects.filter(p => p.assignedTo === u.id);
                   const uActs = activities.filter(a => a.userId === u.id);
                   const uWon = up.filter(p => p.stage === "won").length;
