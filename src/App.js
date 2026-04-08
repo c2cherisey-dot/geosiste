@@ -365,10 +365,25 @@ export default function GeosisteCRM() {
       try {
         const ok = await supa.ping();
         if (!ok) return;
+        // Sync users (new employees, permission changes)
+        const supaUsers = await supa.getAll("crm_users");
+        if (supaUsers?.length > 0) {
+          const mapped = supaUsers.map(u => ({
+            id: u.id, name: u.name, email: u.email, password: u.password,
+            role: u.role || "employee", permissions: u.permissions || {},
+            createdAt: u.created_at || u.createdAt || new Date().toISOString(),
+          }));
+          setUsers(prev => {
+            if (mapped.length !== prev.length || JSON.stringify(mapped.map(u=>u.id).sort()) !== JSON.stringify(prev.map(u=>u.id).sort())) {
+              return mapped;
+            }
+            return prev;
+          });
+        }
+        // Sync prospects
         const supaProspects = await supa.getAll("crm_prospects");
         if (supaProspects?.length > 0) {
           const parsed = supaProspects.map(r => r.data ? { ...r.data } : r);
-          // Only update if Supabase has more data (another device added prospects)
           setProspects(prev => {
             if (parsed.length > prev.length) {
               const prevIds = new Set(prev.map(p => p.id));
@@ -1246,6 +1261,16 @@ export default function GeosisteCRM() {
         <p style={{ fontSize:10,color:"#475569",textAlign:"center",marginTop:16 }}>
           Admin par défaut : admin@chanvrier.com / admin
         </p>
+        <button onClick={() => {
+          if (window.confirm("Vider le cache Geosiste ?\n\nCela supprimera les données locales (prospects, activités, devis) stockées dans ce navigateur.\n\nLes données dans Supabase (cloud) ne seront PAS supprimées.")) {
+            ["crm_prospects","crm_activities","crm_quotes","crm_users","crm_user","crm_remember","crm_saved_email"].forEach(k => localStorage.removeItem(k));
+            if ('caches' in window) caches.keys().then(names => names.forEach(n => caches.delete(n)));
+            alert("Cache vidé ! La page va se recharger.");
+            window.location.reload();
+          }
+        }} style={{ width:"100%",padding:"8px",marginTop:12,background:"none",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,cursor:"pointer",fontSize:10,color:"#64748b",fontFamily:"inherit" }}>
+          🗑️ Vider le cache Geosiste
+        </button>
       </div>
     </div>
   );
@@ -2652,18 +2677,22 @@ export default function GeosisteCRM() {
                       ))}
                     </div>
                   </div>
-                  {/* Assign */}
-                  {isAdmin && (
+                  {/* Assign — admin can assign to anyone, employees can reassign if already assigned to them or unassigned */}
+                  {(isAdmin || can("assign")) && (
                     <div style={{ marginBottom:12 }}>
-                      <div style={{ fontSize:10,color:"#64748b",marginBottom:4 }}>Assigner à</div>
+                      <div style={{ fontSize:10,color:"#64748b",marginBottom:4 }}>Assigner à un commercial</div>
                       <select className="S" value={selected.assignedTo||""} onChange={e => {
                         assignProspect(selected.id, e.target.value);
                         const u = users.find(x => x.id === e.target.value);
                         setSelected(prev => prev ? {...prev, assignedTo:e.target.value, assignedName:u?.name||""} : null);
+                        addActivity(selected.id, selected.name, "Réassigné", `→ ${u?.name || "Non assigné"} par ${user?.name}`);
                       }}>
                         <option value="">Non assigné</option>
-                        {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        {users.filter(u => u && u.name).map(u => <option key={u.id} value={u.id}>{u.name}{u.id===user?.id?" (moi)":""}</option>)}
                       </select>
+                      {selected.assignedTo && selected.assignedTo !== user?.id && !isAdmin && (
+                        <div style={{ fontSize:9,color:"#f59e0b",marginTop:4 }}>⚠️ Ce prospect est assigné à {selected.assignedName}. Réassigner si vous travaillez déjà avec ce client.</div>
+                      )}
                     </div>
                   )}
                   {/* Tags */}
