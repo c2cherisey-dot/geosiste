@@ -366,9 +366,21 @@ export default function GeosisteCRM() {
   const doLogout = () => { setUser(null); LS.del("crm_user"); setView("dashboard"); };
 
   const isAdmin = user?.role === "admin";
-  const canScan = isAdmin || !["noscan","readonly"].includes(user?.permissions);
-  const canEnrich = isAdmin || !["noenrich","readonly","noscan"].includes(user?.permissions);
-  const canEdit = isAdmin || user?.permissions !== "readonly";
+  const userPerms = user?.permissions || {};
+  const can = (action) => isAdmin || userPerms[action] !== false; // default true unless explicitly disabled
+  const PERM_LIST = [
+    { key:"scan", label:"🔍 Scanner", desc:"Lancer des scans de prospects" },
+    { key:"enrich", label:"🔬 Enrichir", desc:"Lancer Pappers/Hunter/SEMrush" },
+    { key:"qualify", label:"🧠 Qualifier IA", desc:"Qualification IA des prospects" },
+    { key:"edit", label:"✏️ Éditer", desc:"Modifier les prospects" },
+    { key:"delete", label:"🗑️ Supprimer", desc:"Supprimer des prospects" },
+    { key:"export", label:"📥 Exporter", desc:"Export CSV et backup" },
+    { key:"quotes", label:"📄 Devis", desc:"Créer et gérer les devis" },
+    { key:"assign", label:"👤 Assigner", desc:"Assigner des prospects" },
+    { key:"pipeline", label:"📈 Pipeline", desc:"Changer les stades pipeline" },
+    { key:"analytics", label:"📉 Analytics", desc:"Voir les analytics" },
+    { key:"top50", label:"🏆 Top 50", desc:"Accès au classement" },
+  ];
 
   // ─── CRM FUNCTIONS ────────────────────────────────────────────────────────
   const addActivity = useCallback((prospectId, prospectName, type, comment) => {
@@ -1087,6 +1099,19 @@ export default function GeosisteCRM() {
         *{scrollbar-width:thin;scrollbar-color:rgba(99,102,241,.15) transparent}
         ::selection{background:rgba(99,102,241,.3)}
         table tr:hover{background:rgba(99,102,241,.03) !important}
+        @media(max-width:768px){
+          nav{overflow-x:auto !important;max-width:60vw}
+          nav button span{display:none}
+          main{padding:10px 8px 60px !important}
+          .C{padding:14px !important;border-radius:12px !important}
+          table{font-size:9px !important}
+          table th,table td{padding:3px 2px !important}
+          .desk{display:none !important}
+        }
+        @media(max-width:480px){
+          header>div{padding:0 8px !important;height:48px !important}
+          nav button{padding:5px 8px !important;font-size:10px !important}
+        }
       `}</style>
 
       {/* ═══ HEADER ═══════════════════════════════════════════════════════════ */}
@@ -1104,14 +1129,14 @@ export default function GeosisteCRM() {
             {[
               { id:"dashboard",label:"Dashboard",icon:"📊" },
               { id:"prospects",label:"Prospects",icon:"👥" },
-              { id:"pipeline",label:"Pipeline",icon:"📈" },
-              { id:"scan",label:"Scanner",icon:"🔍" },
-              { id:"enrich",label:"Enrichir",icon:"🔬" },
-              { id:"analytics",label:"Analytics",icon:"📉" },
-              { id:"top50",label:"Top 50",icon:"🏆" },
-              { id:"quotes",label:"Devis",icon:"📄" },
+              { id:"pipeline",label:"Pipeline",icon:"📈",perm:"pipeline" },
+              { id:"scan",label:"Scanner",icon:"🔍",perm:"scan" },
+              { id:"enrich",label:"Enrichir",icon:"🔬",perm:"enrich" },
+              ...(can("analytics") ? [{ id:"analytics",label:"Analytics",icon:"📉" }] : []),
+              ...(can("top50") ? [{ id:"top50",label:"Top 50",icon:"🏆" }] : []),
+              { id:"quotes",label:"Devis",icon:"📄",perm:"quotes" },
               ...(isAdmin ? [{ id:"admin",label:"Admin",icon:"👑" }] : []),
-            ].map(t => (
+            ].filter(t => !t.perm || can(t.perm)).map(t => (
               <button key={t.id} onClick={() => setView(t.id)}
                 style={{ padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit",
                   display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",transition:"all .2s",
@@ -1208,6 +1233,33 @@ export default function GeosisteCRM() {
                 </div>
               </div>
             </div>
+
+            {/* Smart Alerts */}
+            {(() => {
+              const alerts = [];
+              const stale = myProspects.filter(p => p.stage !== "won" && p.stage !== "lost" && p.lastUpdate && (Date.now() - new Date(p.lastUpdate)) > 15*24*60*60*1000);
+              if (stale.length > 0) alerts.push({ icon:"⏰", msg:`${stale.length} prospects sans activité depuis 15+ jours`, color:"#f59e0b" });
+              const noEmail = myProspects.filter(p => !p.email && p.website).length;
+              if (noEmail > 50) alerts.push({ icon:"📧", msg:`${noEmail} prospects avec site web mais sans email — lancez Hunter.io`, color:"#06b6d4" });
+              const unqualified = myProspects.filter(p => !p.qualification).length;
+              if (unqualified > 100) alerts.push({ icon:"🧠", msg:`${unqualified} prospects non qualifiés — lancez la qualification IA`, color:"#8b5cf6" });
+              const dupes = prospects.length - new Set(prospects.map(p=>p.name.toLowerCase().replace(/[^a-z0-9]/g,''))).size;
+              if (dupes > 10) alerts.push({ icon:"⚠️", msg:`~${dupes} doublons détectés — nettoyez dans Enrichir`, color:"#ef4444" });
+              const unassigned = myProspects.filter(p => !p.assignedTo).length;
+              if (unassigned > 50 && isAdmin) alerts.push({ icon:"👤", msg:`${unassigned} prospects non assignés`, color:"#f97316" });
+              if (alerts.length === 0) return null;
+              return (
+                <div className="C" style={{ marginBottom:16,border:"1px solid rgba(245,158,11,.12)" }}>
+                  <h3 style={{ fontSize:13,fontWeight:700,color:"#fbbf24",marginBottom:10 }}>🔔 Alertes Intelligentes</h3>
+                  {alerts.map((a,i) => (
+                    <div key={i} style={{ display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.02)" }}>
+                      <span style={{ fontSize:16 }}>{a.icon}</span>
+                      <span style={{ fontSize:11,color:a.color }}>{a.msg}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {stats.byCountry.length > 0 && (
               <div className="C">
@@ -1711,8 +1763,8 @@ export default function GeosisteCRM() {
         {/* ═══ ADMIN PANEL ════════════════════════════════════════════════════ */}
         {view === "admin" && isAdmin && (
           <div style={{ animation:"fadeUp .4s ease" }}>
-            <div style={{ display:"flex",gap:2,marginBottom:16,background:"rgba(15,18,30,.6)",padding:3,borderRadius:9,width:"fit-content" }}>
-              {[{id:"team",label:"👥 Équipe"},{id:"activity",label:"📋 Activité"},{id:"prospects",label:"📊 Prospects"}].map(t => (
+            <div style={{ display:"flex",gap:2,marginBottom:16,background:"rgba(255,255,255,.03)",padding:3,borderRadius:9,width:"fit-content",border:"1px solid rgba(255,255,255,.04)" }}>
+              {[{id:"team",label:"👥 Équipe"},{id:"leaderboard",label:"🏅 Leaderboard"},{id:"activity",label:"📋 Activité"},{id:"prospects",label:"📊 Prospects"}].map(t => (
                 <button key={t.id} onClick={() => setAdminTab(t.id)}
                   style={{ padding:"8px 16px",borderRadius:7,border:"none",cursor:"pointer",fontSize:12,fontWeight:500,fontFamily:"inherit",
                     background:adminTab===t.id?"rgba(99,102,241,.15)":"transparent",color:adminTab===t.id?"#a5b4fc":"#64748b" }}>{t.label}</button>
@@ -1730,8 +1782,10 @@ export default function GeosisteCRM() {
                     if (!email) return;
                     const pwd = prompt("Mot de passe:");
                     if (!pwd) return;
-                    const perms = prompt("Permissions (all / readonly / noscan):", "all");
-                    const newU = { id:`u${Date.now()}`, name, email, password:pwd, role:"employee", permissions:perms||"all", createdAt:new Date().toISOString() };
+                    // Default: all permissions enabled
+                    const defaultPerms = {};
+                    PERM_LIST.forEach(p => { defaultPerms[p.key] = true; });
+                    const newU = { id:`u${Date.now()}`, name, email, password:pwd, role:"employee", permissions:defaultPerms, createdAt:new Date().toISOString() };
                     setUsers(prev => [...prev, newU]);
                     if (supaOk) supa.upsert("crm_users", newU);
                     addActivity("system","Admin","Employé ajouté",`${name} (${email})`);
@@ -1767,17 +1821,24 @@ export default function GeosisteCRM() {
                       </div>
                       {/* Permissions */}
                       {u.role !== "admin" && (
-                        <select className="S" style={{ fontSize:9,padding:"4px 6px" }} value={u.permissions||"all"}
-                          onChange={e => {
-                            const perms = e.target.value;
-                            setUsers(prev => prev.map(x => x.id===u.id ? {...x, permissions:perms} : x));
-                            if (supaOk) supa.upsert("crm_users", {...u, permissions:perms});
-                          }}>
-                          <option value="all">Tous accès</option>
-                          <option value="noscan">Pas de scan</option>
-                          <option value="noenrich">Pas d'enrichissement</option>
-                          <option value="readonly">Lecture seule</option>
-                        </select>
+                        <div style={{ display:"flex",gap:3,flexWrap:"wrap" }}>
+                          {PERM_LIST.slice(0,6).map(pm => {
+                            const perms = u.permissions || {};
+                            const enabled = perms[pm.key] !== false;
+                            return (
+                              <button key={pm.key} className="T" style={{ cursor:"pointer",fontSize:7,border:"none",
+                                background:enabled?"rgba(16,185,129,.12)":"rgba(239,68,68,.12)",
+                                color:enabled?"#10b981":"#ef4444" }}
+                                onClick={() => {
+                                  const newPerms = { ...(u.permissions||{}), [pm.key]: !enabled };
+                                  setUsers(prev => prev.map(x => x.id===u.id ? {...x, permissions:newPerms} : x));
+                                  if (supaOk) supa.upsert("crm_users", {...u, permissions:newPerms});
+                                }}>
+                                {enabled?"✓":"✗"} {pm.label.slice(2)}
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
                       {u.role !== "admin" && (
                         <button className="B BD" style={{ fontSize:9,padding:"4px 8px" }}
@@ -1791,6 +1852,54 @@ export default function GeosisteCRM() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Leaderboard */}
+            {adminTab === "leaderboard" && (
+              <div className="C">
+                <h3 style={{ fontSize:14,fontWeight:700,color:"#f1f5f9",marginBottom:16 }}>🏅 Leaderboard — Performance Équipe</h3>
+                {users.map((u, rank) => {
+                  const up = prospects.filter(p => p.assignedTo === u.id);
+                  const uActs = activities.filter(a => a.userId === u.id);
+                  const uWon = up.filter(p => p.stage === "won").length;
+                  const uContacted = up.filter(p => p.stage !== "new").length;
+                  const uQuotes = quotes.filter(q => q.userId === u.id);
+                  const uCA = uQuotes.reduce((a, q) => a + q.total, 0);
+                  const uThisWeek = uActs.filter(a => new Date(a.date) > new Date(Date.now() - 7*24*60*60*1000)).length;
+                  const totalScore = uContacted * 2 + uWon * 20 + uCA / 100 + uThisWeek;
+                  return { ...u, up, uWon, uContacted, uQuotes, uCA, uThisWeek, totalScore };
+                }).sort((a,b) => b.totalScore - a.totalScore).map((u, i) => (
+                  <div key={u.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:"1px solid rgba(255,255,255,.03)" }}>
+                    <div style={{ fontSize:20,fontWeight:800,color:i===0?"#fbbf24":i===1?"#94a3b8":i===2?"#cd7f32":"#475569",fontFamily:"'Space Mono'",width:30,textAlign:"center" }}>
+                      {i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}
+                    </div>
+                    <div style={{ width:36,height:36,borderRadius:9,background:u.role==="admin"?"linear-gradient(135deg,#f59e0b,#f97316)":"linear-gradient(135deg,#6366f1,#8b5cf6)",
+                      display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:700 }}>{u.name[0]}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13,fontWeight:600,color:"#e2e8f0" }}>{u.name}</div>
+                      <div style={{ fontSize:9,color:"#64748b" }}>{u.uThisWeek} actions cette semaine</div>
+                    </div>
+                    <div style={{ display:"flex",gap:16 }}>
+                      <div style={{ textAlign:"center" }}>
+                        <div style={{ fontSize:16,fontWeight:700,color:"#a5b4fc",fontFamily:"'Space Mono'" }}>{u.up.length}</div>
+                        <div style={{ fontSize:7,color:"#64748b" }}>Prospects</div>
+                      </div>
+                      <div style={{ textAlign:"center" }}>
+                        <div style={{ fontSize:16,fontWeight:700,color:"#f59e0b",fontFamily:"'Space Mono'" }}>{u.uContacted}</div>
+                        <div style={{ fontSize:7,color:"#64748b" }}>Contactés</div>
+                      </div>
+                      <div style={{ textAlign:"center" }}>
+                        <div style={{ fontSize:16,fontWeight:700,color:"#10b981",fontFamily:"'Space Mono'" }}>{u.uWon}</div>
+                        <div style={{ fontSize:7,color:"#64748b" }}>Gagnés</div>
+                      </div>
+                      <div style={{ textAlign:"center" }}>
+                        <div style={{ fontSize:16,fontWeight:700,color:"#06b6d4",fontFamily:"'Space Mono'" }}>{(u.uCA/1000).toFixed(1)}k€</div>
+                        <div style={{ fontSize:7,color:"#64748b" }}>CA Devis</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
